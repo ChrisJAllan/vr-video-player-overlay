@@ -602,9 +602,12 @@ bool CMainApplication::BInit()
 
 	//char cwd[4096];
 	//getcwd(cwd, sizeof(cwd));
+	//printf("cwd: %s\n", cwd);
 	//dirname(cwd);
+	char action_manifest_path[PATH_MAX];
+	realpath("config/hellovr_actions.json", action_manifest_path);
 
-	vr::VRInput()->SetActionManifestPath("../config/hellovr_actions.json");
+	vr::VRInput()->SetActionManifestPath(action_manifest_path);
 
 	vr::VRInput()->GetActionHandle( "/actions/demo/in/HideCubes", &m_actionHideCubes );
 	vr::VRInput()->GetActionHandle( "/actions/demo/in/HideThisController", &m_actionHideThisController);
@@ -1860,7 +1863,9 @@ Matrix4 CMainApplication::GetHMDMatrixPoseEye( vr::Hmd_Eye nEye )
 Matrix4 CMainApplication::GetCurrentViewProjectionMatrix( vr::Hmd_Eye nEye )
 {
 	Matrix4 matMVP;
-	//glm::mat4 pp(m_mat4HMDPose.get());
+	//glm::mat4 pp;
+	//memcpy(&pp[0], m_mat4HMDPose.get(), sizeof(m_mat4HMDPose));
+	//memcpy(&m_mat4HMDPose[0], &pp[0], sizeof(pp));
 	if( nEye == vr::Eye_Left )
 	{
 		matMVP = m_mat4ProjectionLeft * m_mat4eyePosLeft * m_mat4HMDPose;
