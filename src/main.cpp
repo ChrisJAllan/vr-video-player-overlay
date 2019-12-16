@@ -40,6 +40,8 @@
 #include <GL/glx.h>
 #include <GL/glxext.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <X11/extensions/Xcomposite.h>
 
 #include <stdio.h>
@@ -49,8 +51,6 @@
 
 #include <unistd.h>
 #include <libgen.h>
-
-#include "../shared/Matrices.h"
 
 #ifndef _countof
 #define _countof(x) (sizeof(x)/sizeof((x)[0]))
@@ -106,7 +106,7 @@ public:
 	bool SetupTexturemaps();
 
 	void SetupScene();
-	void AddCubeToScene( Matrix4 mat, std::vector<float> &vertdata );
+	void AddCubeToScene( const glm::mat4 &mat, std::vector<float> &vertdata );
 	void AddCubeVertex( float fl0, float fl1, float fl2, float fl3, float fl4, std::vector<float> &vertdata );
 
 	void RenderControllerAxes();
@@ -119,12 +119,12 @@ public:
 	void RenderCompanionWindow();
 	void RenderScene( vr::Hmd_Eye nEye );
 
-	Matrix4 GetHMDMatrixProjectionEye( vr::Hmd_Eye nEye );
-	Matrix4 GetHMDMatrixPoseEye( vr::Hmd_Eye nEye );
-	Matrix4 GetCurrentViewProjectionMatrix( vr::Hmd_Eye nEye );
+	glm::mat4 GetHMDMatrixProjectionEye( vr::Hmd_Eye nEye );
+	glm::mat4 GetHMDMatrixPoseEye( vr::Hmd_Eye nEye );
+	glm::mat4 GetCurrentViewProjectionMatrix( vr::Hmd_Eye nEye );
 	void UpdateHMDMatrixPose();
 
-	Matrix4 ConvertSteamVRMatrixToMatrix4( const vr::HmdMatrix34_t &matPose );
+	glm::mat4 ConvertSteamVRMatrixToMatrix4( const vr::HmdMatrix34_t &matPose );
 
 	GLuint CompileGLShader( const char *pchShaderName, const char *pchVertexShader, const char *pchFragmentShader );
 	bool CreateAllShaders();
@@ -142,14 +142,14 @@ private:
 	std::string m_strDriver;
 	std::string m_strDisplay;
 	vr::TrackedDevicePose_t m_rTrackedDevicePose[ vr::k_unMaxTrackedDeviceCount ];
-	Matrix4 m_rmat4DevicePose[ vr::k_unMaxTrackedDeviceCount ];
+	glm::mat4 m_rmat4DevicePose[ vr::k_unMaxTrackedDeviceCount ];
 	
 	struct ControllerInfo_t
 	{
 		vr::VRInputValueHandle_t m_source = vr::k_ulInvalidInputValueHandle;
 		vr::VRActionHandle_t m_actionPose = vr::k_ulInvalidActionHandle;
 		vr::VRActionHandle_t m_actionHaptic = vr::k_ulInvalidActionHandle;
-		Matrix4 m_rmat4Pose;
+		glm::mat4 m_rmat4Pose;
 		CGLRenderModel *m_pRenderModel = nullptr;
 		std::string m_sRenderModelName;
 		bool m_bShowController;
@@ -175,7 +175,7 @@ private: // OpenGL bookkeeping
 	int m_iValidPoseCount;
 	int m_iValidPoseCount_Last;
 	bool m_bShowCubes;
-	Vector2 m_vAnalogValue;
+	glm::vec2 m_vAnalogValue;
 
 	std::string m_strPoseClasses;                            // what classes we saw poses for this frame
 	char m_rDevClassChar[ vr::k_unMaxTrackedDeviceCount ];   // for each device, a character representing its class
@@ -206,28 +206,28 @@ private: // OpenGL bookkeeping
 	GLuint m_unControllerVAO;
 	unsigned int m_uiControllerVertcount;
 
-	Matrix4 m_mat4HMDPose;
-	Matrix4 m_mat4eyePosLeft;
-	Matrix4 m_mat4eyePosRight;
+	glm::mat4 m_mat4HMDPose;
+	glm::mat4 m_mat4eyePosLeft;
+	glm::mat4 m_mat4eyePosRight;
 
-	Matrix4 m_resetPos;
+	glm::mat4 m_resetPos;
 
-	Matrix4 m_mat4ProjectionCenter;
-	Matrix4 m_mat4ProjectionLeft;
-	Matrix4 m_mat4ProjectionRight;
+	glm::mat4 m_mat4ProjectionCenter;
+	glm::mat4 m_mat4ProjectionLeft;
+	glm::mat4 m_mat4ProjectionRight;
 
 	struct VertexDataScene
 	{
-		Vector3 position;
-		Vector2 texCoord;
+		glm::vec3 position;
+		glm::vec2 texCoord;
 	};
 
 	struct VertexDataWindow
 	{
-		Vector2 position;
-		Vector2 texCoord;
+		glm::vec2 position;
+		glm::vec2 texCoord;
 
-		VertexDataWindow( const Vector2 & pos, const Vector2 tex ) :  position(pos), texCoord(tex) {	}
+		VertexDataWindow( const glm::vec2 & pos, const glm::vec2 tex ) :  position(pos), texCoord(tex) {	}
 	};
 
 	GLuint m_unSceneProgramID;
@@ -1269,16 +1269,16 @@ void CMainApplication::SetupScene()
 		return;
 
 	std::vector<float> vertdataarray;
-#if 0
-	Matrix4 matScale;
-	matScale.scale( m_fScale, m_fScale, m_fScale );
-	Matrix4 matTransform;
-	matTransform.translate(
-		-( (float)m_iSceneVolumeWidth * m_fScaleSpacing ) / 2.f,
-		-( (float)m_iSceneVolumeHeight * m_fScaleSpacing ) / 2.f,
-		-( (float)m_iSceneVolumeDepth * m_fScaleSpacing ) / 2.f);
+
+	glm::mat4 matScale =glm::scale(glm::identity<glm::mat4>(), glm::vec3(m_fScale, m_fScale, m_fScale));
+	glm::mat4 matTransform = glm::translate(glm::identity<glm::mat4>(),
+		glm::vec3(
+			-( (float)m_iSceneVolumeWidth * m_fScaleSpacing ) / 2.f,
+			-( (float)m_iSceneVolumeHeight * m_fScaleSpacing ) / 2.f,
+			-( (float)m_iSceneVolumeDepth * m_fScaleSpacing ) / 2.f)
+	);
 	
-	Matrix4 mat = matScale * matTransform;
+	glm::mat4 mat = matScale * matTransform;
 
 	for( int z = 0; z< m_iSceneVolumeDepth; z++ )
 	{
@@ -1287,25 +1287,25 @@ void CMainApplication::SetupScene()
 			for( int x = 0; x< m_iSceneVolumeWidth; x++ )
 			{
 				AddCubeToScene( mat, vertdataarray );
-				mat = mat * Matrix4().translate( m_fScaleSpacing, 0, 0 );
+				mat = mat * glm::translate(glm::identity<glm::mat4>(), glm::vec3(m_fScaleSpacing, 0, 0 ));
 			}
-			mat = mat * Matrix4().translate( -((float)m_iSceneVolumeWidth) * m_fScaleSpacing, m_fScaleSpacing, 0 );
+			mat = mat * glm::translate(glm::identity<glm::mat4>(), glm::vec3(-((float)m_iSceneVolumeWidth) * m_fScaleSpacing, m_fScaleSpacing, 0 ));
 		}
-		mat = mat * Matrix4().translate( 0, -((float)m_iSceneVolumeHeight) * m_fScaleSpacing, m_fScaleSpacing );
+		mat = mat * glm::translate(glm::identity<glm::mat4>(), glm::vec3(0, -((float)m_iSceneVolumeHeight) * m_fScaleSpacing, m_fScaleSpacing ));
 	}
-#endif
 
-	Matrix4 matScale;
-	matScale.scale( m_fScale, m_fScale, m_fScale );
-	Matrix4 matTransform;
+#if 0
+	glm::mat4 matScale = glm::identity<glm::mat4>();
+	matScale = glm::scale(matScale, glm::vec3(m_fScale, m_fScale, m_fScale));
+	glm::mat4 matTransform = glm::identity<glm::mat4>();
 	// matTransform.translate(
 	//  	-( (float)m_fScale ) * 2.f,
 	//  	-( (float)m_fScale) * 2.f,
 	//  	-( (float)m_fScale) * 1.0f);
 	
-	Matrix4 mat = matScale * matTransform;
+	glm::mat4 mat = matScale * matTransform;
 	AddCubeToScene( mat, vertdataarray );
-
+#endif
 	m_uiVertcount = vertdataarray.size()/5;
 	
 	glGenVertexArrays( 1, &m_unSceneVAO );
@@ -1321,7 +1321,7 @@ void CMainApplication::SetupScene()
 	glEnableVertexAttribArray( 0 );
 	glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, stride , (const void *)offset);
 
-	offset += sizeof(Vector3);
+	offset += sizeof(glm::vec3);
 	glEnableVertexAttribArray( 1 );
 	glVertexAttribPointer( 1, 2, GL_FLOAT, GL_FALSE, stride, (const void *)offset);
 
@@ -1348,26 +1348,26 @@ void CMainApplication::AddCubeVertex( float fl0, float fl1, float fl2, float fl3
 //-----------------------------------------------------------------------------
 // Purpose:
 //-----------------------------------------------------------------------------
-void CMainApplication::AddCubeToScene( Matrix4 mat, std::vector<float> &vertdata )
+void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> &vertdata )
 {
-	// Matrix4 mat( outermat.data() );
+	// glm::mat4 mat( outermat.data() );
 
-	Vector4 A = mat * Vector4( 0, 0, 0, 1 );
-	Vector4 B = mat * Vector4( 1, 0, 0, 1 );
-	Vector4 C = mat * Vector4( 1, 1, 0, 1 );
-	Vector4 D = mat * Vector4( 0, 1, 0, 1 );
-	Vector4 E = mat * Vector4( 0, 0, 1, 1 );
-	Vector4 F = mat * Vector4( 1, 0, 1, 1 );
-	Vector4 G = mat * Vector4( 1, 1, 1, 1 );
-	Vector4 H = mat * Vector4( 0, 1, 1, 1 );
+	glm::vec4 A = mat * glm::vec4( 0, 0, 0, 1 );
+	glm::vec4 B = mat * glm::vec4( 1, 0, 0, 1 );
+	glm::vec4 C = mat * glm::vec4( 1, 1, 0, 1 );
+	glm::vec4 D = mat * glm::vec4( 0, 1, 0, 1 );
+	glm::vec4 E = mat * glm::vec4( 0, 0, 1, 1 );
+	glm::vec4 F = mat * glm::vec4( 1, 0, 1, 1 );
+	glm::vec4 G = mat * glm::vec4( 1, 1, 1, 1 );
+	glm::vec4 H = mat * glm::vec4( 0, 1, 1, 1 );
 
-	// triangles instead of quads
-	// AddCubeVertex( E.x, E.y, E.z, 0, 1, vertdata ); //Front
-	// AddCubeVertex( F.x, F.y, F.z, 1, 1, vertdata );
-	// AddCubeVertex( G.x, G.y, G.z, 1, 0, vertdata );
-	// AddCubeVertex( G.x, G.y, G.z, 1, 0, vertdata );
-	// AddCubeVertex( H.x, H.y, H.z, 0, 0, vertdata );
-	// AddCubeVertex( E.x, E.y, E.z, 0, 1, vertdata );
+	//triangles instead of quads
+	AddCubeVertex( E.x, E.y, E.z, 0, 1, vertdata ); //Front
+	AddCubeVertex( F.x, F.y, F.z, 1, 1, vertdata );
+	AddCubeVertex( G.x, G.y, G.z, 1, 0, vertdata );
+	AddCubeVertex( G.x, G.y, G.z, 1, 0, vertdata );
+	AddCubeVertex( H.x, H.y, H.z, 0, 0, vertdata );
+	AddCubeVertex( E.x, E.y, E.z, 0, 1, vertdata );
 					 
 	AddCubeVertex( B.x, B.y, B.z, 0, 1, vertdata ); //Back
 	AddCubeVertex( A.x, A.y, A.z, 1, 1, vertdata );
@@ -1423,12 +1423,12 @@ void CMainApplication::AddCubeToScene( Matrix4 mat, std::vector<float> &vertdata
 			x5 *= sin((double)(row + 1) / (double)rows * angle_y) * radius_depth;
 			x6 *= sin((double)row / (double)rows * angle_y) * radius_depth;
 
-			Vector4 v1 = mat * Vector4(x1, y1, z1, 1.0);
-			Vector4 v2 = mat * Vector4(x2, y2, z2, 1.0);
-			Vector4 v3 = mat * Vector4(x3, y3, z3, 1.0);
-			Vector4 v4 = mat * Vector4(x4, y4, z4, 1.0);
-			Vector4 v5 = mat * Vector4(x5, y5, z5, 1.0);
-			Vector4 v6 = mat * Vector4(x6, y6, z6, 1.0);
+			glm::vec4 v1 = mat * glm::vec4(x1, y1, z1, 1.0);
+			glm::vec4 v2 = mat * glm::vec4(x2, y2, z2, 1.0);
+			glm::vec4 v3 = mat * glm::vec4(x3, y3, z3, 1.0);
+			glm::vec4 v4 = mat * glm::vec4(x4, y4, z4, 1.0);
+			glm::vec4 v5 = mat * glm::vec4(x5, y5, z5, 1.0);
+			glm::vec4 v6 = mat * glm::vec4(x6, y6, z6, 1.0);
 
 			AddCubeVertex(v1.x, v1.y, v1.z, 1.0 - (double)column / (double)columns, (double)row / (double)rows, vertdata);
 			AddCubeVertex(v2.x, v2.y, v2.z, 1.0 - (double)(column + 1) / (double)columns, (double)row / (double)rows, vertdata);
@@ -1441,33 +1441,33 @@ void CMainApplication::AddCubeToScene( Matrix4 mat, std::vector<float> &vertdata
 	}
 #endif
 					
-	// AddCubeVertex( H.x, H.y, H.z, 0, 1, vertdata ); //Top
-	// AddCubeVertex( G.x, G.y, G.z, 1, 1, vertdata );
-	// AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
-	// AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
-	// AddCubeVertex( D.x, D.y, D.z, 0, 0, vertdata );
-	// AddCubeVertex( H.x, H.y, H.z, 0, 1, vertdata );
+	AddCubeVertex( H.x, H.y, H.z, 0, 1, vertdata ); //Top
+	AddCubeVertex( G.x, G.y, G.z, 1, 1, vertdata );
+	AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
+	AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
+	AddCubeVertex( D.x, D.y, D.z, 0, 0, vertdata );
+	AddCubeVertex( H.x, H.y, H.z, 0, 1, vertdata );
 				
-	// AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata ); //Bottom
-	// AddCubeVertex( B.x, B.y, B.z, 1, 1, vertdata );
-	// AddCubeVertex( F.x, F.y, F.z, 1, 0, vertdata );
-	// AddCubeVertex( F.x, F.y, F.z, 1, 0, vertdata );
-	// AddCubeVertex( E.x, E.y, E.z, 0, 0, vertdata );
-	// AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata );
+	AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata ); //Bottom
+	AddCubeVertex( B.x, B.y, B.z, 1, 1, vertdata );
+	AddCubeVertex( F.x, F.y, F.z, 1, 0, vertdata );
+	AddCubeVertex( F.x, F.y, F.z, 1, 0, vertdata );
+	AddCubeVertex( E.x, E.y, E.z, 0, 0, vertdata );
+	AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata );
 					
-	// AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata ); //Left
-	// AddCubeVertex( E.x, E.y, E.z, 1, 1, vertdata );
-	// AddCubeVertex( H.x, H.y, H.z, 1, 0, vertdata );
-	// AddCubeVertex( H.x, H.y, H.z, 1, 0, vertdata );
-	// AddCubeVertex( D.x, D.y, D.z, 0, 0, vertdata );
-	// AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata );
+	AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata ); //Left
+	AddCubeVertex( E.x, E.y, E.z, 1, 1, vertdata );
+	AddCubeVertex( H.x, H.y, H.z, 1, 0, vertdata );
+	AddCubeVertex( H.x, H.y, H.z, 1, 0, vertdata );
+	AddCubeVertex( D.x, D.y, D.z, 0, 0, vertdata );
+	AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata );
 
-	// AddCubeVertex( F.x, F.y, F.z, 0, 1, vertdata ); //Right
-	// AddCubeVertex( B.x, B.y, B.z, 1, 1, vertdata );
-	// AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
-	// AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
-	// AddCubeVertex( G.x, G.y, G.z, 0, 0, vertdata );
-	// AddCubeVertex( F.x, F.y, F.z, 0, 1, vertdata );
+	AddCubeVertex( F.x, F.y, F.z, 0, 1, vertdata ); //Right
+	AddCubeVertex( B.x, B.y, B.z, 1, 1, vertdata );
+	AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
+	AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
+	AddCubeVertex( G.x, G.y, G.z, 0, 0, vertdata );
+	AddCubeVertex( F.x, F.y, F.z, 0, 1, vertdata );
 }
 
 
@@ -1490,14 +1490,14 @@ void CMainApplication::RenderControllerAxes()
 		if ( !m_rHand[eHand].m_bShowController )
 			continue;
 
-		const Matrix4 & mat = m_rHand[eHand].m_rmat4Pose;
+		const glm::mat4 & mat = m_rHand[eHand].m_rmat4Pose;
 
-		Vector4 center = mat * Vector4( 0, 0, 0, 1 );
+		glm::vec4 center = mat * glm::vec4( 0, 0, 0, 1 );
 
 		for ( int i = 0; i < 3; ++i )
 		{
-			Vector3 color( 0, 0, 0 );
-			Vector4 point( 0, 0, 0, 1 );
+			glm::vec3 color( 0, 0, 0 );
+			glm::vec4 point( 0, 0, 0, 1 );
 			point[i] += 0.05f;  // offset in X, Y, Z
 			color[i] = 1.0;  // R, G, B
 			point = mat * point;
@@ -1520,9 +1520,9 @@ void CMainApplication::RenderControllerAxes()
 			m_uiControllerVertcount += 2;
 		}
 
-		Vector4 start = mat * Vector4( 0, 0, -0.02f, 1 );
-		Vector4 end = mat * Vector4( 0, 0, -39.f, 1 );
-		Vector3 color( .92f, .92f, .71f );
+		glm::vec4 start = mat * glm::vec4( 0, 0, -0.02f, 1 );
+		glm::vec4 end = mat * glm::vec4( 0, 0, -39.f, 1 );
+		glm::vec3 color( .92f, .92f, .71f );
 
 		vertdataarray.push_back( start.x );vertdataarray.push_back( start.y );vertdataarray.push_back( start.z );
 		vertdataarray.push_back( color.x );vertdataarray.push_back( color.y );vertdataarray.push_back( color.z );
@@ -1547,7 +1547,7 @@ void CMainApplication::RenderControllerAxes()
 		glEnableVertexAttribArray( 0 );
 		glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, stride, (const void *)offset);
 
-		offset += sizeof( Vector3 );
+		offset += sizeof( glm::vec3 );
 		glEnableVertexAttribArray( 1 );
 		glVertexAttribPointer( 1, 3, GL_FLOAT, GL_FALSE, stride, (const void *)offset);
 
@@ -1647,16 +1647,16 @@ void CMainApplication::SetupCompanionWindow()
 	std::vector<VertexDataWindow> vVerts;
 
 	// left eye verts
-	vVerts.push_back( VertexDataWindow( Vector2(-1, -1), Vector2(0, 1)) );
-	vVerts.push_back( VertexDataWindow( Vector2(0, -1), Vector2(1, 1)) );
-	vVerts.push_back( VertexDataWindow( Vector2(-1, 1), Vector2(0, 0)) );
-	vVerts.push_back( VertexDataWindow( Vector2(0, 1), Vector2(1, 0)) );
+	vVerts.push_back( VertexDataWindow( glm::vec2(-1, -1), glm::vec2(0, 1)) );
+	vVerts.push_back( VertexDataWindow( glm::vec2(0, -1), glm::vec2(1, 1)) );
+	vVerts.push_back( VertexDataWindow( glm::vec2(-1, 1), glm::vec2(0, 0)) );
+	vVerts.push_back( VertexDataWindow( glm::vec2(0, 1), glm::vec2(1, 0)) );
 
 	// right eye verts
-	vVerts.push_back( VertexDataWindow( Vector2(0, -1), Vector2(0, 1)) );
-	vVerts.push_back( VertexDataWindow( Vector2(1, -1), Vector2(1, 1)) );
-	vVerts.push_back( VertexDataWindow( Vector2(0, 1), Vector2(0, 0)) );
-	vVerts.push_back( VertexDataWindow( Vector2(1, 1), Vector2(1, 0)) );
+	vVerts.push_back( VertexDataWindow( glm::vec2(0, -1), glm::vec2(0, 1)) );
+	vVerts.push_back( VertexDataWindow( glm::vec2(1, -1), glm::vec2(1, 1)) );
+	vVerts.push_back( VertexDataWindow( glm::vec2(0, 1), glm::vec2(0, 0)) );
+	vVerts.push_back( VertexDataWindow( glm::vec2(1, 1), glm::vec2(1, 0)) );
 
 	GLushort vIndices[] = { 0, 1, 3,   0, 3, 2,   4, 5, 7,   4, 7, 6 };
 	m_uiCompanionWindowIndexSize = _countof(vIndices);
@@ -1747,7 +1747,7 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 	if( m_bShowCubes )
 	{
 		glUseProgram( m_unSceneProgramID );
-		glUniformMatrix4fv( m_nSceneMatrixLocation, 1, GL_FALSE, GetCurrentViewProjectionMatrix( nEye ).get() );
+		glUniformMatrix4fv( m_nSceneMatrixLocation, 1, GL_FALSE, glm::value_ptr(GetCurrentViewProjectionMatrix( nEye )));
 		glBindVertexArray( m_unSceneVAO );
 		glBindTexture( GL_TEXTURE_2D, m_iTexture );
 		glDrawArrays( GL_TRIANGLES, 0, m_uiVertcount );
@@ -1760,7 +1760,7 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 	{
 		// draw the controller axis lines
 		glUseProgram( m_unControllerTransformProgramID );
-		glUniformMatrix4fv( m_nControllerMatrixLocation, 1, GL_FALSE, GetCurrentViewProjectionMatrix( nEye ).get() );
+		glUniformMatrix4fv( m_nControllerMatrixLocation, 1, GL_FALSE, glm::value_ptr(GetCurrentViewProjectionMatrix( nEye )));
 		glBindVertexArray( m_unControllerVAO );
 		glDrawArrays( GL_LINES, 0, m_uiControllerVertcount );
 		glBindVertexArray( 0 );
@@ -1774,9 +1774,9 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 		if ( !m_rHand[eHand].m_bShowController || !m_rHand[eHand].m_pRenderModel )
 			continue;
 
-		const Matrix4 & matDeviceToTracking = m_rHand[eHand].m_rmat4Pose;
-		Matrix4 matMVP = GetCurrentViewProjectionMatrix( nEye ) * matDeviceToTracking;
-		glUniformMatrix4fv( m_nRenderModelMatrixLocation, 1, GL_FALSE, matMVP.get() );
+		const glm::mat4 & matDeviceToTracking = m_rHand[eHand].m_rmat4Pose;
+		glm::mat4 matMVP = GetCurrentViewProjectionMatrix( nEye ) * matDeviceToTracking;
+		glUniformMatrix4fv( m_nRenderModelMatrixLocation, 1, GL_FALSE, glm::value_ptr(matMVP));
 
 		m_rHand[eHand].m_pRenderModel->Draw();
 	}
@@ -1820,14 +1820,14 @@ void CMainApplication::RenderCompanionWindow()
 //-----------------------------------------------------------------------------
 // Purpose: Gets a Matrix Projection Eye with respect to nEye.
 //-----------------------------------------------------------------------------
-Matrix4 CMainApplication::GetHMDMatrixProjectionEye( vr::Hmd_Eye nEye )
+glm::mat4 CMainApplication::GetHMDMatrixProjectionEye( vr::Hmd_Eye nEye )
 {
 	if ( !m_pHMD )
-		return Matrix4();
+		return glm::identity<glm::mat4>();
 
 	vr::HmdMatrix44_t mat = m_pHMD->GetProjectionMatrix( nEye, m_fNearClip, m_fFarClip );
 
-	return Matrix4(
+	return glm::mat4(
 		mat.m[0][0], mat.m[1][0], mat.m[2][0], mat.m[3][0],
 		mat.m[0][1], mat.m[1][1], mat.m[2][1], mat.m[3][1], 
 		mat.m[0][2], mat.m[1][2], mat.m[2][2], mat.m[3][2], 
@@ -1839,20 +1839,20 @@ Matrix4 CMainApplication::GetHMDMatrixProjectionEye( vr::Hmd_Eye nEye )
 //-----------------------------------------------------------------------------
 // Purpose: Gets an HMDMatrixPoseEye with respect to nEye.
 //-----------------------------------------------------------------------------
-Matrix4 CMainApplication::GetHMDMatrixPoseEye( vr::Hmd_Eye nEye )
+glm::mat4 CMainApplication::GetHMDMatrixPoseEye( vr::Hmd_Eye nEye )
 {
 	if ( !m_pHMD )
-		return Matrix4();
+		return glm::identity<glm::mat4>();
 
 	vr::HmdMatrix34_t matEyeRight = m_pHMD->GetEyeToHeadTransform( nEye );
-	Matrix4 matrixObj(
+	glm::mat4 matrixObj(
 		matEyeRight.m[0][0], matEyeRight.m[1][0], matEyeRight.m[2][0], 0.0, 
 		matEyeRight.m[0][1], matEyeRight.m[1][1], matEyeRight.m[2][1], 0.0,
 		matEyeRight.m[0][2], matEyeRight.m[1][2], matEyeRight.m[2][2], 0.0,
 		matEyeRight.m[0][3], matEyeRight.m[1][3], matEyeRight.m[2][3], 1.0f
 		);
 
-	return matrixObj.invert();
+	return glm::inverse(matrixObj);
 }
 
 
@@ -1860,9 +1860,9 @@ Matrix4 CMainApplication::GetHMDMatrixPoseEye( vr::Hmd_Eye nEye )
 // Purpose: Gets a Current View Projection Matrix with respect to nEye,
 //          which may be an Eye_Left or an Eye_Right.
 //-----------------------------------------------------------------------------
-Matrix4 CMainApplication::GetCurrentViewProjectionMatrix( vr::Hmd_Eye nEye )
+glm::mat4 CMainApplication::GetCurrentViewProjectionMatrix( vr::Hmd_Eye nEye )
 {
-	Matrix4 matMVP;
+	glm::mat4 matMVP;
 	//glm::mat4 pp;
 	//memcpy(&pp[0], m_mat4HMDPose.get(), sizeof(m_mat4HMDPose));
 	//memcpy(&m_mat4HMDPose[0], &pp[0], sizeof(pp));
@@ -1915,8 +1915,7 @@ void CMainApplication::UpdateHMDMatrixPose()
 
 	if ( m_rTrackedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid )
 	{
-		m_mat4HMDPose = m_rmat4DevicePose[vr::k_unTrackedDeviceIndex_Hmd];
-		m_mat4HMDPose.invert();
+		m_mat4HMDPose = glm::inverse(m_rmat4DevicePose[vr::k_unTrackedDeviceIndex_Hmd]);
 	}
 }
 
@@ -1994,9 +1993,9 @@ CGLRenderModel *CMainApplication::FindOrLoadRenderModel( const char *pchRenderMo
 //-----------------------------------------------------------------------------
 // Purpose: Converts a SteamVR matrix to our local matrix class
 //-----------------------------------------------------------------------------
-Matrix4 CMainApplication::ConvertSteamVRMatrixToMatrix4( const vr::HmdMatrix34_t &matPose )
+glm::mat4 CMainApplication::ConvertSteamVRMatrixToMatrix4( const vr::HmdMatrix34_t &matPose )
 {
-	Matrix4 matrixObj(
+	glm::mat4 matrixObj(
 		matPose.m[0][0], matPose.m[1][0], matPose.m[2][0], 0.0,
 		matPose.m[0][1], matPose.m[1][1], matPose.m[2][1], 0.0,
 		matPose.m[0][2], matPose.m[1][2], matPose.m[2][2], 0.0,
