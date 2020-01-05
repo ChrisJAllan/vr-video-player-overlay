@@ -34,6 +34,7 @@
 #include <SDL.h>
 #include <GL/glew.h>
 #include <SDL_opengl.h>
+#include <SOIL/SOIL.h>
 #include <GL/glu.h>
 #include <openvr.h>
 #define GLX_GLXEXT_PROTOTYPES
@@ -192,11 +193,15 @@ private: // OpenGL bookkeeping
 	float m_fFarClip;
 
 	GLuint m_iTexture;
+	GLuint m_arrow_texture_id;
 
 	unsigned int m_uiVertcount;
+	unsigned int m_arrow_vert_count;
 
 	GLuint m_glSceneVertBuffer;
+	GLuint m_arrow_vert_buffer;
 	GLuint m_unSceneVAO;
+	GLuint m_arrow_vao;
 	GLuint m_unCompanionWindowVAO;
 	GLuint m_glCompanionWindowIDVertBuffer;
 	GLuint m_glCompanionWindowIDIndexBuffer;
@@ -215,6 +220,9 @@ private: // OpenGL bookkeeping
 	glm::mat4 m_mat4ProjectionCenter;
 	glm::mat4 m_mat4ProjectionLeft;
 	glm::mat4 m_mat4ProjectionRight;
+
+	glm::vec3 hmd_pos = glm::vec3(0.0f, 0.0f, 0.0f);
+	glm::vec3 hmd_reset_pos = glm::vec3(0.0f, 0.0f, 0.0f);
 
 	struct VertexDataScene
 	{
@@ -270,6 +278,10 @@ private: // X compositor
 	Pixmap src_window_pixmap;
 	GLXFBConfig *configs;
 	GLXPixmap glxpixmap;
+
+	// Additional resources for the window manager
+	SDL_Surface *arrow_surface = nullptr;
+	glm::vec3 cursor_pos = glm::vec3(0.0f, 0.0f, 0.0f);
 };
 
 
@@ -561,6 +573,8 @@ bool CMainApplication::BInit()
 		return false;
 	}
 
+	// Capture mouse inside window
+	SDL_SetRelativeMouseMode(SDL_TRUE);
 
 	m_strDriver = "No Driver";
 	m_strDisplay = "No Display";
@@ -579,10 +593,11 @@ bool CMainApplication::BInit()
  	m_fScale = 1.0f;
  	m_fScaleSpacing = 2.0f;
  
- 	m_fNearClip = 0.1f;
+ 	m_fNearClip = 0.01f;
  	m_fFarClip = 30.0f;
  
  	m_iTexture = 0;
+	m_arrow_texture_id = 0;
  	m_uiVertcount = 0;
  
 // 		m_MillisecondsTimer.start(1, this);
@@ -765,6 +780,8 @@ void CMainApplication::Shutdown()
 	SDL_Quit();
 
 	if (x_display) {
+		if(arrow_surface)
+			SDL_FreeSurface(arrow_surface);
 		glXReleaseTexImageEXT(x_display, glxpixmap, GLX_FRONT_EXT);
 		glXDestroyPixmap(x_display, glxpixmap);
 		XFree(configs);
@@ -798,6 +815,36 @@ bool CMainApplication::HandleInput()
 			{
 				m_bShowCubes = !m_bShowCubes;
 			}
+		} else if (sdlEvent.type == SDL_MOUSEMOTION) {
+			//printf("event x: %d\n", sdlEvent.motion.xrel);
+			float cursor_speed = 0.001f;
+			cursor_pos.x -= ((float)sdlEvent.motion.xrel * cursor_speed);
+			cursor_pos.y -= ((float)sdlEvent.motion.yrel * cursor_speed);
+			cursor_pos = glm::clamp(cursor_pos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 0.0f));
+		} else if(sdlEvent.type == SDL_MOUSEBUTTONDOWN) {
+			printf("send fake event!\n");
+			XEvent fake_event;
+			memset(&fake_event, 0, sizeof(fake_event));
+			fake_event.type = ButtonPress;
+			fake_event.xbutton.button = Button1;
+			fake_event.xbutton.root = DefaultRootWindow(x_display);
+			fake_event.xbutton.window = src_window_id;
+			fake_event.xbutton.x_root = 0;
+			fake_event.xbutton.y_root = 0;
+			fake_event.xbutton.x = cursor_pos.x * 1920;
+			fake_event.xbutton.y = cursor_pos.y * 1080;
+			fake_event.xbutton.state = Button1Mask;
+			fake_event.xbutton.subwindow = src_window_id;
+			// TODO: Find subwindow at cursor position with XQueryPoitner
+			if(XSendEvent(x_display, src_window_id, True, 0xfff, &fake_event) == 0)
+				printf("failed to send fake event button down!\n");
+			XFlush(x_display);
+
+			fake_event.type = ButtonRelease;
+			fake_event.xbutton.state = Button1Mask;
+			if(XSendEvent(x_display, src_window_id, True, 0xfff, &fake_event) == 0)
+				printf("failed to send fake event button up!\n");
+			XFlush(x_display);
 		}
 	}
 
@@ -826,7 +873,9 @@ bool CMainApplication::HandleInput()
 
 	m_bShowCubes = !GetDigitalActionState( m_actionHideCubes );
 	if(GetDigitalActionState( m_actionHideCubes )) {
-		printf("reset position!\n");
+		//printf("reset position!\n");
+		hmd_reset_pos = hmd_pos;
+		//printf("pos, %f, %f, %f\n", m_mat4HMDPose[0][2], m_mat4HMDPose[1][2], m_mat4HMDPose[2][2]);
 		//m_resetPos = m_mat4HMDPose;
 	}
 
@@ -1198,6 +1247,39 @@ bool CMainApplication::CreateAllShaders()
 //-----------------------------------------------------------------------------
 bool CMainApplication::SetupTexturemaps()
 {
+	GLfloat fLargest;
+
+	//m_arrow_texture_id = SOIL_load_OGL_texture("images/arrow.png", SOIL_LOAD_AUTO, SOIL_CREATE_NEW_ID, SOIL_FLAG_MIPMAPS);
+	int width;
+	int height;
+	unsigned char *image_data = SOIL_load_image("images/arrow.png", &width, &height, nullptr, SOIL_LOAD_RGBA);
+	if(!image_data) {
+		printf("Failed to load images/arrow.png, error: %s\n", SOIL_last_result());
+		return false;
+	}
+
+	glGenTextures(1, &m_arrow_texture_id );
+	glBindTexture( GL_TEXTURE_2D, m_arrow_texture_id );
+
+	glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
+	SOIL_free_image_data(image_data);
+
+	glGenerateMipmap(GL_TEXTURE_2D);
+
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR );
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+	glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &fLargest);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, fLargest);
+
+	glBindTexture( GL_TEXTURE_2D, 0 );
+
 	const int pixmap_config[] = {
 		GLX_BIND_TO_TEXTURE_RGBA_EXT, True,
 		GLX_DRAWABLE_TYPE, GLX_PIXMAP_BIT,
@@ -1211,7 +1293,8 @@ bool CMainApplication::SetupTexturemaps()
     const int pixmap_attribs[] = {
 		GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_2D_EXT,
 		GLX_TEXTURE_FORMAT_EXT, GLX_TEXTURE_FORMAT_RGB_EXT,
-		None
+		//GLX_MIPMAP_TEXTURE_EXT, True,
+		None, None, None
     };
 
 	int c;
@@ -1240,23 +1323,26 @@ bool CMainApplication::SetupTexturemaps()
 	glGenTextures(1, &m_iTexture );
 	glBindTexture( GL_TEXTURE_2D, m_iTexture );
 
+	glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
 	glXBindTexImageEXT(x_display, glxpixmap, GLX_FRONT_EXT, NULL);
+	//glGenerateTextureMipmapEXT(glxpixmap, GL_TEXTURE_2D);
 
 	//glGenerateMipmap(GL_TEXTURE_2D);
 
 	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
 	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
 	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR/*GL_LINEAR_MIPMAP_LINEAR*/ );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);//GL_LINEAR_MIPMAP_LINEAR );
 	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 
-	GLfloat fLargest;
 	glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &fLargest);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, fLargest);
 	 	
 	glBindTexture( GL_TEXTURE_2D, 0 );
 
-	return ( m_iTexture != 0 );
+	return ( m_iTexture != 0 && m_arrow_texture_id != 0 );
 }
 
 
@@ -1269,7 +1355,7 @@ void CMainApplication::SetupScene()
 		return;
 
 	std::vector<float> vertdataarray;
-
+#if 0
 	glm::mat4 matScale =glm::scale(glm::identity<glm::mat4>(), glm::vec3(m_fScale, m_fScale, m_fScale));
 	glm::mat4 matTransform = glm::translate(glm::identity<glm::mat4>(),
 		glm::vec3(
@@ -1294,14 +1380,13 @@ void CMainApplication::SetupScene()
 		mat = mat * glm::translate(glm::identity<glm::mat4>(), glm::vec3(0, -((float)m_iSceneVolumeHeight) * m_fScaleSpacing, m_fScaleSpacing ));
 	}
 
-#if 0
+#else
 	glm::mat4 matScale = glm::identity<glm::mat4>();
 	matScale = glm::scale(matScale, glm::vec3(m_fScale, m_fScale, m_fScale));
 	glm::mat4 matTransform = glm::identity<glm::mat4>();
-	// matTransform.translate(
-	//  	-( (float)m_fScale ) * 2.f,
-	//  	-( (float)m_fScale) * 2.f,
-	//  	-( (float)m_fScale) * 1.0f);
+	matTransform = glm::translate(glm::identity<glm::mat4>(),
+		hmd_reset_pos + glm::vec3(-m_fScale*0.5f, -m_fScale*0.5f, 0.5f)
+	);
 	
 	glm::mat4 mat = matScale * matTransform;
 	AddCubeToScene( mat, vertdataarray );
@@ -1324,6 +1409,57 @@ void CMainApplication::SetupScene()
 	offset += sizeof(glm::vec3);
 	glEnableVertexAttribArray( 1 );
 	glVertexAttribPointer( 1, 2, GL_FLOAT, GL_FALSE, stride, (const void *)offset);
+
+	glBindVertexArray( 0 );
+	glDisableVertexAttribArray(0);
+	glDisableVertexAttribArray(1);
+
+
+
+	// Arrow
+	glm::mat4 matScaleArrow = glm::identity<glm::mat4>();
+	matScaleArrow = glm::scale(matScaleArrow, glm::vec3(m_fScale, m_fScale, m_fScale));
+	glm::mat4 matTransformArrow = glm::identity<glm::mat4>();
+	matTransformArrow = glm::translate(glm::identity<glm::mat4>(),
+		hmd_reset_pos + glm::vec3(-m_fScale*0.5f, -m_fScale*0.5f, 0.499f)
+	);
+	
+	glm::mat4 matArrow = matScaleArrow * matTransformArrow;
+	std::vector<float> arrow_data;
+	float arrow_scale = 0.02f;
+	glm::vec4 v1 = matArrow * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+	glm::vec4 v2 = matArrow * glm::vec4(arrow_scale, 0.0f, 0.0f, 1.0f);
+	glm::vec4 v3 = matArrow * glm::vec4(0.0f, arrow_scale, 0.0f, 1.0f);
+	glm::vec4 v4 = matArrow * glm::vec4(0.0f, arrow_scale, 0.0f, 1.0f);
+	glm::vec4 v5 = matArrow * glm::vec4(arrow_scale, arrow_scale, 0.0f, 1.0f);
+	glm::vec4 v6 = matArrow * glm::vec4(arrow_scale, 0.0f, 0.0f, 1.0f);
+	AddCubeVertex(v1.x, v1.y, v1.z, 1.0f, 1.0f, arrow_data);
+	AddCubeVertex(v2.x, v2.y, v2.z, 0.0f, 1.0f, arrow_data);
+	AddCubeVertex(v3.x, v3.y, v3.z, 1.0f, 0.0f, arrow_data);
+
+	AddCubeVertex(v4.x, v4.y, v4.z, 1.0f, 0.0f, arrow_data);
+	AddCubeVertex(v5.x, v5.y, v5.z, 0.0f, 0.0f, arrow_data);
+	AddCubeVertex(v6.x, v6.y, v6.z, 0.0f, 1.0f, arrow_data);
+
+	m_arrow_vert_count = arrow_data.size()/5;
+	
+
+	glGenVertexArrays( 1, &m_arrow_vao );
+	glBindVertexArray( m_arrow_vao );
+
+	glGenBuffers( 1, &m_arrow_vert_buffer );
+	glBindBuffer( GL_ARRAY_BUFFER, m_arrow_vert_buffer );
+	glBufferData( GL_ARRAY_BUFFER, sizeof(float) * arrow_data.size(), &arrow_data[0], GL_STATIC_DRAW);
+
+	GLsizei stride_arrow = sizeof(VertexDataScene);
+	uintptr_t offset_arrow = 0;
+
+	glEnableVertexAttribArray( 0 );
+	glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, stride_arrow , (const void *)offset_arrow);
+
+	offset_arrow += sizeof(glm::vec3);
+	glEnableVertexAttribArray( 1 );
+	glVertexAttribPointer( 1, 2, GL_FLOAT, GL_FALSE, stride_arrow, (const void *)offset_arrow);
 
 	glBindVertexArray( 0 );
 	glDisableVertexAttribArray(0);
@@ -1361,46 +1497,49 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 	glm::vec4 G = mat * glm::vec4( 1, 1, 1, 1 );
 	glm::vec4 H = mat * glm::vec4( 0, 1, 1, 1 );
 
-	//triangles instead of quads
-	AddCubeVertex( E.x, E.y, E.z, 0, 1, vertdata ); //Front
-	AddCubeVertex( F.x, F.y, F.z, 1, 1, vertdata );
-	AddCubeVertex( G.x, G.y, G.z, 1, 0, vertdata );
-	AddCubeVertex( G.x, G.y, G.z, 1, 0, vertdata );
-	AddCubeVertex( H.x, H.y, H.z, 0, 0, vertdata );
-	AddCubeVertex( E.x, E.y, E.z, 0, 1, vertdata );
+	// //triangles instead of quads
+	// AddCubeVertex( E.x, E.y, E.z, 0, 1, vertdata ); //Front
+	// AddCubeVertex( F.x, F.y, F.z, 1, 1, vertdata );
+	// AddCubeVertex( G.x, G.y, G.z, 1, 0, vertdata );
+	// AddCubeVertex( G.x, G.y, G.z, 1, 0, vertdata );
+	// AddCubeVertex( H.x, H.y, H.z, 0, 0, vertdata );
+	// AddCubeVertex( E.x, E.y, E.z, 0, 1, vertdata );
 					 
-	AddCubeVertex( B.x, B.y, B.z, 0, 1, vertdata ); //Back
-	AddCubeVertex( A.x, A.y, A.z, 1, 1, vertdata );
-	AddCubeVertex( D.x, D.y, D.z, 1, 0, vertdata );
-	AddCubeVertex( D.x, D.y, D.z, 1, 0, vertdata );
-	AddCubeVertex( C.x, C.y, C.z, 0, 0, vertdata );
-	AddCubeVertex( B.x, B.y, B.z, 0, 1, vertdata );
+	// AddCubeVertex( B.x, B.y, B.z, 0, 1, vertdata ); //Back
+	// AddCubeVertex( A.x, A.y, A.z, 1, 1, vertdata );
+	// AddCubeVertex( D.x, D.y, D.z, 1, 0, vertdata );
+	// AddCubeVertex( D.x, D.y, D.z, 1, 0, vertdata );
+	// AddCubeVertex( C.x, C.y, C.z, 0, 0, vertdata );
+	// AddCubeVertex( B.x, B.y, B.z, 0, 1, vertdata );
 #if 0
 	long columns = 32;
 	long rows = 32;
-	double angle_x = 3.14;
+	double angle_x = 1.0;
 	double angle_y = 3.14;
 	double radius = 1.0;
 	double radius_depth = 1.0;
+	double radius_height = 1.0;
 
 	for(long row = 0; row < rows-1; ++row) {
 		for(long column = 0; column < columns-1; ++column) {
-			double z1 = sin((double)column / (double)columns * angle_x);
-			double z2 = sin((double)(column + 1) / (double)columns * angle_x);
+			double offset_angle = angle_x*0.5;
+
+			double z1 = sin(offset_angle + (double)column / (double)columns * angle_x) * radius;
+			double z2 = sin(offset_angle + (double)(column + 1) / (double)columns * angle_x) * radius;
 			double z3 = z1;
 
 			double z4 = z3;
 			double z5 = z2;
 			double z6 = z2;
 
-			double x1 = -cos((double)column / (double)columns * angle_x) ;
-			double x2 = -cos((double)(column + 1) / (double)columns * angle_x);
+			double x1 = -cos(offset_angle + (double)column / (double)columns * angle_x) * radius;
+			double x2 = -cos(offset_angle + (double)(column + 1) / (double)columns * angle_x) * radius;
 			double x3 = x1;
 
 			double x4 = x3;
 			double x5 = x2;
 			double x6 = x2;
-
+#if 0
 			double y1 = cos((double)row / (double)rows * angle_y) * radius;
 			double y2 = y1;
 			double y3 = cos((double)(row + 1) / (double)rows * angle_y) * radius;
@@ -1422,6 +1561,15 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 			x4 *= sin((double)(row + 1) / (double)rows * angle_y) * radius_depth;
 			x5 *= sin((double)(row + 1) / (double)rows * angle_y) * radius_depth;
 			x6 *= sin((double)row / (double)rows * angle_y) * radius_depth;
+#else
+			double y1 = ((double)row / (double)rows) * radius_height;
+			double y2 = y1;
+			double y3 = ((double)(row + 1) / (double)rows) * radius_height;
+
+			double y4 = y3;
+			double y5 = y3;
+			double y6 = y1;
+#endif
 
 			glm::vec4 v1 = mat * glm::vec4(x1, y1, z1, 1.0);
 			glm::vec4 v2 = mat * glm::vec4(x2, y2, z2, 1.0);
@@ -1430,44 +1578,82 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 			glm::vec4 v5 = mat * glm::vec4(x5, y5, z5, 1.0);
 			glm::vec4 v6 = mat * glm::vec4(x6, y6, z6, 1.0);
 
-			AddCubeVertex(v1.x, v1.y, v1.z, 1.0 - (double)column / (double)columns, (double)row / (double)rows, vertdata);
-			AddCubeVertex(v2.x, v2.y, v2.z, 1.0 - (double)(column + 1) / (double)columns, (double)row / (double)rows, vertdata);
-			AddCubeVertex(v3.x, v3.y, v3.z, 1.0 - (double)column / (double)columns, (double)(row + 1) / (double)rows, vertdata);
+			AddCubeVertex(v1.x, v1.y, v1.z, 1.0 - (double)column / (double)columns, 		1.0 - (double)row / (double)rows, vertdata);
+			AddCubeVertex(v2.x, v2.y, v2.z, 1.0 - (double)(column + 1) / (double)columns, 	1.0 - (double)row / (double)rows, vertdata);
+			AddCubeVertex(v3.x, v3.y, v3.z, 1.0 - (double)column / (double)columns, 		1.0 - (double)(row + 1) / (double)rows, vertdata);
 
-			AddCubeVertex(v4.x, v4.y, v4.z, 1.0 - (double)column / (double)columns, (double)(row + 1) / (double)rows, vertdata);
-			AddCubeVertex(v5.x, v5.y, v5.z, 1.0 - (double)(column + 1) / (double)columns, (double)(row + 1) / (double)rows, vertdata);
-			AddCubeVertex(v6.x, v6.y, v6.z, 1.0 - (double)(column + 1) / (double)columns, (double)row / (double)rows, vertdata);
+			AddCubeVertex(v4.x, v4.y, v4.z, 1.0 - (double)column / (double)columns, 		1.0 - (double)(row + 1) / (double)rows, vertdata);
+			AddCubeVertex(v5.x, v5.y, v5.z, 1.0 - (double)(column + 1) / (double)columns, 	1.0 - (double)(row + 1) / (double)rows, vertdata);
+			AddCubeVertex(v6.x, v6.y, v6.z, 1.0 - (double)(column + 1) / (double)columns, 	1.0 - (double)row / (double)rows, vertdata);
 		}
 	}
 #endif
-					
-	AddCubeVertex( H.x, H.y, H.z, 0, 1, vertdata ); //Top
-	AddCubeVertex( G.x, G.y, G.z, 1, 1, vertdata );
-	AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
-	AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
-	AddCubeVertex( D.x, D.y, D.z, 0, 0, vertdata );
-	AddCubeVertex( H.x, H.y, H.z, 0, 1, vertdata );
-				
-	AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata ); //Bottom
-	AddCubeVertex( B.x, B.y, B.z, 1, 1, vertdata );
-	AddCubeVertex( F.x, F.y, F.z, 1, 0, vertdata );
-	AddCubeVertex( F.x, F.y, F.z, 1, 0, vertdata );
-	AddCubeVertex( E.x, E.y, E.z, 0, 0, vertdata );
-	AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata );
-					
-	AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata ); //Left
-	AddCubeVertex( E.x, E.y, E.z, 1, 1, vertdata );
-	AddCubeVertex( H.x, H.y, H.z, 1, 0, vertdata );
-	AddCubeVertex( H.x, H.y, H.z, 1, 0, vertdata );
-	AddCubeVertex( D.x, D.y, D.z, 0, 0, vertdata );
-	AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata );
 
-	AddCubeVertex( F.x, F.y, F.z, 0, 1, vertdata ); //Right
-	AddCubeVertex( B.x, B.y, B.z, 1, 1, vertdata );
-	AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
-	AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
-	AddCubeVertex( G.x, G.y, G.z, 0, 0, vertdata );
-	AddCubeVertex( F.x, F.y, F.z, 0, 1, vertdata );
+	int columns = 32;
+	int rows = 32;
+	float scale_x = 1.0f;
+	float scale_y = 1.0f;
+
+	for(int row = 0; row < rows - 1; ++row) {
+		for(int column = 0; column < columns - 1; ++column) {
+			float x1 = ((float)column / (float)columns) * scale_x;
+			float x2 = ((float)(column + 1) / (float)columns) * scale_x;
+			float x3 = x1;
+			float x4 = x3;
+			float x5 = x2;
+			float x6 = x2;
+
+			float y1 = ((float)row / (float)rows) * scale_y;
+			float y2 = y1;
+			float y3 = ((float)(row + 1) / (float)rows) * scale_y;
+			float y4 = y3;
+			float y5 = y3;
+			float y6 = y1;
+
+			glm::vec4 v1 = mat * glm::vec4(x1, y1, 0.0f, 1.0);
+			glm::vec4 v2 = mat * glm::vec4(x2, y2, 0.0f, 1.0);
+			glm::vec4 v3 = mat * glm::vec4(x3, y3, 0.0f, 1.0);
+			glm::vec4 v4 = mat * glm::vec4(x4, y4, 0.0f, 1.0);
+			glm::vec4 v5 = mat * glm::vec4(x5, y5, 0.0f, 1.0);
+			glm::vec4 v6 = mat * glm::vec4(x6, y6, 0.0f, 1.0);
+
+			AddCubeVertex(v1.x, v1.y, v1.z, 1.0 - (float)column / (float)columns, 		1.0 - (float)row / (float)rows, vertdata);
+			AddCubeVertex(v2.x, v2.y, v2.z, 1.0 - (float)(column + 1) / (float)columns, 1.0 - (float)row / (float)rows, vertdata);
+			AddCubeVertex(v3.x, v3.y, v3.z, 1.0 - (float)column / (float)columns, 		1.0 - (float)(row + 1) / (float)rows, vertdata);
+
+			AddCubeVertex(v4.x, v4.y, v4.z, 1.0 - (float)column / (float)columns, 		1.0 - (float)(row + 1) / (float)rows, vertdata);
+			AddCubeVertex(v5.x, v5.y, v5.z, 1.0 - (float)(column + 1) / (float)columns, 1.0 - (float)(row + 1) / (float)rows, vertdata);
+			AddCubeVertex(v6.x, v6.y, v6.z, 1.0 - (float)(column + 1) / (float)columns, 1.0 - (float)row / (float)rows, vertdata);
+		}
+	}
+					
+	// AddCubeVertex( H.x, H.y, H.z, 0, 1, vertdata ); //Top
+	// AddCubeVertex( G.x, G.y, G.z, 1, 1, vertdata );
+	// AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
+	// AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
+	// AddCubeVertex( D.x, D.y, D.z, 0, 0, vertdata );
+	// AddCubeVertex( H.x, H.y, H.z, 0, 1, vertdata );
+				
+	// AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata ); //Bottom
+	// AddCubeVertex( B.x, B.y, B.z, 1, 1, vertdata );
+	// AddCubeVertex( F.x, F.y, F.z, 1, 0, vertdata );
+	// AddCubeVertex( F.x, F.y, F.z, 1, 0, vertdata );
+	// AddCubeVertex( E.x, E.y, E.z, 0, 0, vertdata );
+	// AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata );
+					
+	// AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata ); //Left
+	// AddCubeVertex( E.x, E.y, E.z, 1, 1, vertdata );
+	// AddCubeVertex( H.x, H.y, H.z, 1, 0, vertdata );
+	// AddCubeVertex( H.x, H.y, H.z, 1, 0, vertdata );
+	// AddCubeVertex( D.x, D.y, D.z, 0, 0, vertdata );
+	// AddCubeVertex( A.x, A.y, A.z, 0, 1, vertdata );
+
+	// AddCubeVertex( F.x, F.y, F.z, 0, 1, vertdata ); //Right
+	// AddCubeVertex( B.x, B.y, B.z, 1, 1, vertdata );
+	// AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
+	// AddCubeVertex( C.x, C.y, C.z, 1, 0, vertdata );
+	// AddCubeVertex( G.x, G.y, G.z, 0, 0, vertdata );
+	// AddCubeVertex( F.x, F.y, F.z, 0, 1, vertdata );
 }
 
 
@@ -1695,7 +1881,24 @@ void CMainApplication::RenderStereoTargets()
 {
 	glClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
 	glEnable( GL_MULTISAMPLE );
+	//TODO: Fix this
+#if 0
+	glBindTexture( GL_TEXTURE_2D, m_iTexture );
 
+	glXBindTexImageEXT(x_display, glxpixmap, GLX_FRONT_EXT, NULL);
+	//glGenerateTextureMipmapEXT(glxpixmap, GL_TEXTURE_2D);
+
+	glGenerateMipmap(GL_TEXTURE_2D);
+
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR );
+
+	GLfloat fLargest;
+	glGetFloatv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &fLargest );
+	glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, fLargest );
+#endif
 	// Left Eye
 	glBindFramebuffer( GL_FRAMEBUFFER, leftEyeDesc.m_nRenderFramebufferId );
  	glViewport(0, 0, m_nRenderWidth, m_nRenderHeight );
@@ -1733,6 +1936,8 @@ void CMainApplication::RenderStereoTargets()
 
  	glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0 );
+
+	//glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 
@@ -1753,6 +1958,15 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 		glDrawArrays( GL_TRIANGLES, 0, m_uiVertcount );
 		glBindVertexArray( 0 );
 	}
+
+	glUseProgram( m_unSceneProgramID );
+	glm::mat4 arrow_mat = GetCurrentViewProjectionMatrix( nEye );
+	arrow_mat = glm::translate(arrow_mat, cursor_pos);
+	glUniformMatrix4fv( m_nSceneMatrixLocation, 1, GL_FALSE, glm::value_ptr(arrow_mat));
+	glBindVertexArray( m_arrow_vao );
+	glBindTexture( GL_TEXTURE_2D, m_arrow_texture_id );
+	glDrawArrays( GL_TRIANGLES, 0, m_arrow_vert_count );
+	glBindVertexArray( 0 );
 
 	bool bIsInputAvailable = m_pHMD->IsInputAvailable();
 
@@ -1868,11 +2082,11 @@ glm::mat4 CMainApplication::GetCurrentViewProjectionMatrix( vr::Hmd_Eye nEye )
 	//memcpy(&m_mat4HMDPose[0], &pp[0], sizeof(pp));
 	if( nEye == vr::Eye_Left )
 	{
-		matMVP = m_mat4ProjectionLeft * m_mat4eyePosLeft * m_mat4HMDPose;
+		matMVP = m_mat4ProjectionLeft * m_mat4eyePosLeft * glm::translate(m_mat4HMDPose, hmd_reset_pos);
 	}
 	else if( nEye == vr::Eye_Right )
 	{
-		matMVP = m_mat4ProjectionRight * m_mat4eyePosRight * m_mat4HMDPose;
+		matMVP = m_mat4ProjectionRight * m_mat4eyePosRight * glm::translate(m_mat4HMDPose, hmd_reset_pos);
 	}
 
 	return matMVP;
@@ -1897,17 +2111,20 @@ void CMainApplication::UpdateHMDMatrixPose()
 		{
 			m_iValidPoseCount++;
 			m_rmat4DevicePose[nDevice] = ConvertSteamVRMatrixToMatrix4( m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking );
-			if (m_rDevClassChar[nDevice]==0)
+			switch (m_pHMD->GetTrackedDeviceClass(nDevice))
 			{
-				switch (m_pHMD->GetTrackedDeviceClass(nDevice))
-				{
-				case vr::TrackedDeviceClass_Controller:        m_rDevClassChar[nDevice] = 'C'; break;
-				case vr::TrackedDeviceClass_HMD:               m_rDevClassChar[nDevice] = 'H'; break;
-				case vr::TrackedDeviceClass_Invalid:           m_rDevClassChar[nDevice] = 'I'; break;
-				case vr::TrackedDeviceClass_GenericTracker:    m_rDevClassChar[nDevice] = 'G'; break;
-				case vr::TrackedDeviceClass_TrackingReference: m_rDevClassChar[nDevice] = 'T'; break;
-				default:                                       m_rDevClassChar[nDevice] = '?'; break;
-				}
+			case vr::TrackedDeviceClass_Controller:        m_rDevClassChar[nDevice] = 'C'; break;
+			case vr::TrackedDeviceClass_HMD:
+				//printf("pos: %f, %f, %f\n", m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[0][3], m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[1][3], m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[2][3]);
+				hmd_pos.x = m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[0][3];
+				hmd_pos.y = m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[1][3];
+				hmd_pos.z = m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[2][3];
+				m_rDevClassChar[nDevice] = 'H';
+				break;
+			case vr::TrackedDeviceClass_Invalid:           m_rDevClassChar[nDevice] = 'I'; break;
+			case vr::TrackedDeviceClass_GenericTracker:    m_rDevClassChar[nDevice] = 'G'; break;
+			case vr::TrackedDeviceClass_TrackingReference: m_rDevClassChar[nDevice] = 'T'; break;
+			default:                                       m_rDevClassChar[nDevice] = '?'; break;
 			}
 			m_strPoseClasses += m_rDevClassChar[nDevice];
 		}
