@@ -498,11 +498,7 @@ bool CMainApplication::BInit()
         return false;
     }
 
-	int screen_count = ScreenCount(x_display);
-    for(int i = 0; i < screen_count; ++i)
-	{
-        XCompositeRedirectSubwindows(x_display, RootWindow(x_display, i), CompositeRedirectAutomatic);
-    }
+	XCompositeRedirectWindow(x_display, src_window_id, CompositeRedirectAutomatic);
 
 	if ( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_TIMER ) < 0 )
 	{
