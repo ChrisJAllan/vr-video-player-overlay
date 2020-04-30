@@ -270,10 +270,16 @@ private: // OpenGL bookkeeping
 
 private: // X compositor
 	Display *x_display = nullptr;
-	Window src_window_id;
+	Window src_window_id = None;
 	Pixmap src_window_pixmap;
 	GLXFBConfig *configs;
 	GLXPixmap glxpixmap;
+
+	GLint pixmap_texture_width = 0;
+	GLint pixmap_texture_height = 0;
+
+	bool sphere_projection = true;
+	double zoom = 0.0;
 };
 
 
@@ -362,6 +368,11 @@ void dprintf( const char *fmt, ... )
 		printf( "%s", buffer );
 }
 
+static void usage() {
+	fprintf(stderr, "usage: vr-video-player [--flat] [--zoom zoom-level] <window_id>\n");
+	exit(1);
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
 //-----------------------------------------------------------------------------
@@ -396,13 +407,30 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	, m_strPoseClasses("")
 	, m_bShowCubes( true )
 {
-	if(argc < 2) {
-		fprintf(stderr, "usage: vr_window_manager [window_id]\n");
-		exit(1);
+	for(int i = 1; i < argc; ++i) {
+		if(strcmp(argv[i], "--flat") == 0) {
+			sphere_projection = false;
+		} else if(strcmp(argv[i], "--zoom") == 0 && i < argc - 1) {
+			zoom = atof(argv[i + 1]);
+			++i;
+		} else if(argv[i][0] == '-') {
+			fprintf(stderr, "Invalid flag: %s\n", argv[i]);
+			usage();
+		} else {
+			src_window_id = strtol(argv[1], nullptr, 0);
+		}
 	}
 
-	src_window_id = strtol(argv[1], nullptr, 0);
-	printf("src window id: %d\n", src_window_id);
+	if(src_window_id == None) {
+		fprintf(stderr, "Missing required window_id flag\n");
+		usage();
+	}
+
+	if(!sphere_projection && fabs(zoom) <= 0.00001) {
+		zoom = 1.0;
+	}
+
+	printf("src window id: %ld, zoom: %f\n", src_window_id, zoom);
 
 #if 0
 	for( int i = 1; i < argc; i++ )
@@ -1275,6 +1303,11 @@ bool CMainApplication::SetupTexturemaps()
 
 	glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &fLargest);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, fLargest);
+
+	pixmap_texture_width = 0;
+	pixmap_texture_height = 0;
+	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &pixmap_texture_width);
+	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &pixmap_texture_height);
 	 	
 	glBindTexture( GL_TEXTURE_2D, 0 );
 
@@ -1383,99 +1416,114 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 	glm::vec4 G = mat * glm::vec4( 1, 1, 1, 1 );
 	glm::vec4 H = mat * glm::vec4( 0, 1, 1, 1 );
 
+	double width_ratio = ((double)pixmap_texture_width * 0.5) / (double)pixmap_texture_height;
 
-	long columns = 32;
-	long rows = 32;
-	double angle_x = 3.14;
-	double angle_y = 3.14;
-	double radius_depth = 1.0;
-	double zoom = 0.5;
-	double radius_height = zoom;
-	double radius = zoom * 1.0;
+	if(sphere_projection)
+	{
+		long columns = 32;
+		long rows = 32;
+		double angle_x = 3.14;
+		double angle_y = 3.14;
+		double radius_depth = 1.0;
+		double radius_height = 0.5;
+		double radius = 0.5 * width_ratio;
 
-	for(long row = 0; row < rows-1; ++row) {
-		for(long column = 0; column < columns-1; ++column) {
-			double offset_angle = 0.0;//angle_x*0.5;
+		for(long row = 0; row < rows-1; ++row) {
+			for(long column = 0; column < columns-1; ++column) {
+				double offset_angle = 0.0;//angle_x*0.5;
 
-			double y_sin1 = sin((double)row / (double)rows * 3.14);
-			double y_sin2 = sin((double)(row + 1) / (double)rows * 3.14);
+				double y_sin1 = sin((double)row / (double)rows * 3.14);
+				double y_sin2 = sin((double)(row + 1) / (double)rows * 3.14);
 
-			double z1 = sin(offset_angle + (double)column / (double)columns * angle_x) * radius;
-			double z2 = sin(offset_angle + (double)(column + 1) / (double)columns * angle_x) * radius;
-			double z3 = z1;
+				double z1 = sin(offset_angle + (double)column / (double)columns * angle_x) * radius;
+				double z2 = sin(offset_angle + (double)(column + 1) / (double)columns * angle_x) * radius;
+				double z3 = z1;
 
-			double z4 = z3;
-			double z5 = z2;
-			double z6 = z2;
+				double z4 = z3;
+				double z5 = z2;
+				double z6 = z2;
 
-			z1 *= y_sin1;
-			z2 *= y_sin1;
-			z3 *= y_sin2;
-			z4 *= y_sin2;
-			z5 *= y_sin2;
-			z6 *= y_sin1;
+				z1 *= y_sin1;
+				z2 *= y_sin1;
+				z3 *= y_sin2;
+				z4 *= y_sin2;
+				z5 *= y_sin2;
+				z6 *= y_sin1;
 
-			double x1 = -cos(offset_angle + (double)column / (double)columns * angle_x) * radius;
-			double x2 = -cos(offset_angle + (double)(column + 1) / (double)columns * angle_x) * radius;
-			double x3 = x1;
+				double x1 = -cos(offset_angle + (double)column / (double)columns * angle_x) * radius;
+				double x2 = -cos(offset_angle + (double)(column + 1) / (double)columns * angle_x) * radius;
+				double x3 = x1;
 
-			double x4 = x3;
-			double x5 = x2;
-			double x6 = x2;
+				double x4 = x3;
+				double x5 = x2;
+				double x6 = x2;
 
-			x1 *= y_sin1;
-			x2 *= y_sin1;
-			x3 *= y_sin2;
-			x4 *= y_sin2;
-			x5 *= y_sin2;
-			x6 *= y_sin1;
-#if 0
-			double y1 = cos((double)row / (double)rows * angle_y) * radius;
-			double y2 = y1;
-			double y3 = cos((double)(row + 1) / (double)rows * angle_y) * radius;
+				x1 *= y_sin1;
+				x2 *= y_sin1;
+				x3 *= y_sin2;
+				x4 *= y_sin2;
+				x5 *= y_sin2;
+				x6 *= y_sin1;
+	#if 0
+				double y1 = cos((double)row / (double)rows * angle_y) * radius;
+				double y2 = y1;
+				double y3 = cos((double)(row + 1) / (double)rows * angle_y) * radius;
 
-			double y4 = y3;
-			double y5 = y3;
-			double y6 = y1;
+				double y4 = y3;
+				double y5 = y3;
+				double y6 = y1;
 
-			z1 *= sin((double)row / (double)rows * angle_y) * radius_depth;
-			z2 *= sin((double)row / (double)rows * angle_y) * radius_depth;
-			z3 *= sin((double)(row + 1) / (double)rows * angle_y) * radius_depth;
-			z4 *= sin((double)(row + 1) / (double)rows * angle_y) * radius_depth;
-			z5 *= sin((double)(row + 1) / (double)rows * angle_y) * radius_depth;
-			z6 *= sin((double)row / (double)rows * angle_y) * radius_depth;
+				z1 *= sin((double)row / (double)rows * angle_y) * radius_depth;
+				z2 *= sin((double)row / (double)rows * angle_y) * radius_depth;
+				z3 *= sin((double)(row + 1) / (double)rows * angle_y) * radius_depth;
+				z4 *= sin((double)(row + 1) / (double)rows * angle_y) * radius_depth;
+				z5 *= sin((double)(row + 1) / (double)rows * angle_y) * radius_depth;
+				z6 *= sin((double)row / (double)rows * angle_y) * radius_depth;
 
-			x1 *= sin((double)row / (double)rows * angle_y) * radius_depth;
-			x2 *= sin((double)row / (double)rows * angle_y) * radius_depth;
-			x3 *= sin((double)(row + 1) / (double)rows * angle_y) * radius_depth;
-			x4 *= sin((double)(row + 1) / (double)rows * angle_y) * radius_depth;
-			x5 *= sin((double)(row + 1) / (double)rows * angle_y) * radius_depth;
-			x6 *= sin((double)row / (double)rows * angle_y) * radius_depth;
-#else
-			double y1 = cos((double)row / (double)rows * 3.14) * radius_height;
-			double y2 = y1;
-			double y3 = cos((double)(row + 1) / (double)rows * 3.14) * radius_height;
+				x1 *= sin((double)row / (double)rows * angle_y) * radius_depth;
+				x2 *= sin((double)row / (double)rows * angle_y) * radius_depth;
+				x3 *= sin((double)(row + 1) / (double)rows * angle_y) * radius_depth;
+				x4 *= sin((double)(row + 1) / (double)rows * angle_y) * radius_depth;
+				x5 *= sin((double)(row + 1) / (double)rows * angle_y) * radius_depth;
+				x6 *= sin((double)row / (double)rows * angle_y) * radius_depth;
+	#else
+				double y1 = cos((double)row / (double)rows * 3.14) * radius_height;
+				double y2 = y1;
+				double y3 = cos((double)(row + 1) / (double)rows * 3.14) * radius_height;
 
-			double y4 = y3;
-			double y5 = y3;
-			double y6 = y1;
-#endif
+				double y4 = y3;
+				double y5 = y3;
+				double y6 = y1;
+	#endif
 
-			glm::vec4 v1 = mat * glm::vec4(x1, y1, z1, 1.0);
-			glm::vec4 v2 = mat * glm::vec4(x2, y2, z2, 1.0);
-			glm::vec4 v3 = mat * glm::vec4(x3, y3, z3, 1.0);
-			glm::vec4 v4 = mat * glm::vec4(x4, y4, z4, 1.0);
-			glm::vec4 v5 = mat * glm::vec4(x5, y5, z5, 1.0);
-			glm::vec4 v6 = mat * glm::vec4(x6, y6, z6, 1.0);
+				glm::vec4 v1 = mat * glm::vec4(x1, y1, z1 + zoom, 1.0);
+				glm::vec4 v2 = mat * glm::vec4(x2, y2, z2 + zoom, 1.0);
+				glm::vec4 v3 = mat * glm::vec4(x3, y3, z3 + zoom, 1.0);
+				glm::vec4 v4 = mat * glm::vec4(x4, y4, z4 + zoom, 1.0);
+				glm::vec4 v5 = mat * glm::vec4(x5, y5, z5 + zoom, 1.0);
+				glm::vec4 v6 = mat * glm::vec4(x6, y6, z6 + zoom, 1.0);
 
-			AddCubeVertex(v1.x, v1.y, v1.z, 1.0 - (double)column / (double)columns, 		(double)row / (double)rows, vertdata);
-			AddCubeVertex(v2.x, v2.y, v2.z, 1.0 - (double)(column + 1) / (double)columns, 	(double)row / (double)rows, vertdata);
-			AddCubeVertex(v3.x, v3.y, v3.z, 1.0 - (double)column / (double)columns, 		(double)(row + 1) / (double)rows, vertdata);
+				AddCubeVertex(v1.x, v1.y, v1.z, 1.0 - (double)column / (double)columns,                 (double)row / (double)rows, vertdata);
+				AddCubeVertex(v2.x, v2.y, v2.z, 1.0 - (double)(column + 1) / (double)columns,   (double)row / (double)rows, vertdata);
+				AddCubeVertex(v3.x, v3.y, v3.z, 1.0 - (double)column / (double)columns,                 (double)(row + 1) / (double)rows, vertdata);
 
-			AddCubeVertex(v4.x, v4.y, v4.z, 1.0 - (double)column / (double)columns, 		(double)(row + 1) / (double)rows, vertdata);
-			AddCubeVertex(v5.x, v5.y, v5.z, 1.0 - (double)(column + 1) / (double)columns, 	(double)(row + 1) / (double)rows, vertdata);
-			AddCubeVertex(v6.x, v6.y, v6.z, 1.0 - (double)(column + 1) / (double)columns, 	(double)row / (double)rows, vertdata);
+				AddCubeVertex(v4.x, v4.y, v4.z, 1.0 - (double)column / (double)columns,                 (double)(row + 1) / (double)rows, vertdata);
+				AddCubeVertex(v5.x, v5.y, v5.z, 1.0 - (double)(column + 1) / (double)columns,   (double)(row + 1) / (double)rows, vertdata);
+				AddCubeVertex(v6.x, v6.y, v6.z, 1.0 - (double)(column + 1) / (double)columns,   (double)row / (double)rows, vertdata);
+			}
 		}
+	}
+	else
+	{
+		double width = 1.0 * width_ratio;
+		double height = 0.5;
+		AddCubeVertex(-width, 	 height, zoom, 1.0, 0.0, vertdata);
+		AddCubeVertex(width, 	 height, zoom, 0.0, 0.0, vertdata);
+		AddCubeVertex(-width, 	-height, zoom, 1.0, 1.0, vertdata);
+
+		AddCubeVertex(-width, 	-height, zoom, 1.0, 1.0, vertdata);
+		AddCubeVertex(width, 	-height, zoom, 0.0, 1.0, vertdata);
+		AddCubeVertex(width, 	 height, zoom, 0.0, 0.0, vertdata);
 	}
 }
 
