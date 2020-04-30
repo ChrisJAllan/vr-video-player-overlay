@@ -417,7 +417,7 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 			fprintf(stderr, "Invalid flag: %s\n", argv[i]);
 			usage();
 		} else {
-			src_window_id = strtol(argv[1], nullptr, 0);
+			src_window_id = strtol(argv[i], nullptr, 0);
 		}
 	}
 
@@ -635,6 +635,15 @@ bool CMainApplication::BInit()
 	//dirname(cwd);
 	char action_manifest_path[PATH_MAX];
 	realpath("config/hellovr_actions.json", action_manifest_path);
+	if(access(action_manifest_path, F_OK) == -1) {
+		strcpy(action_manifest_path, "/usr/share/vr-video-player/hellovr_actions.json");
+		if(access(action_manifest_path, F_OK) == -1) {
+			fprintf(stderr, "Unable to find hellovr_action.json!\n");
+			exit(1);
+		}
+	}
+
+	fprintf(stderr, "Using config file: %s\n", action_manifest_path);
 
 	vr::VRInput()->SetActionManifestPath(action_manifest_path);
 
