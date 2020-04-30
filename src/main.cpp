@@ -278,8 +278,15 @@ private: // X compositor
 	GLint pixmap_texture_width = 0;
 	GLint pixmap_texture_height = 0;
 
+	enum class ViewMode {
+		LEFT_RIGHT,
+		RIGHT_LEFT
+	};
+
 	bool sphere_projection = true;
 	double zoom = 0.0;
+	ViewMode view_mode = ViewMode::LEFT_RIGHT;
+	bool stretch = true;
 };
 
 
@@ -369,7 +376,7 @@ void dprintf( const char *fmt, ... )
 }
 
 static void usage() {
-	fprintf(stderr, "usage: vr-video-player [--flat] [--zoom zoom-level] <window_id>\n");
+	fprintf(stderr, "usage: vr-video-player [--flat] [--left-right|--right-left] [--stretch|--no-stretch] [--zoom zoom-level] <window_id>\n");
 	exit(1);
 }
 
@@ -413,6 +420,14 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 		} else if(strcmp(argv[i], "--zoom") == 0 && i < argc - 1) {
 			zoom = atof(argv[i + 1]);
 			++i;
+		} else if(strcmp(argv[i], "--left-right") == 0) {
+			view_mode = ViewMode::LEFT_RIGHT;
+		} else if(strcmp(argv[i], "--right-left") == 0) {
+			view_mode = ViewMode::RIGHT_LEFT;
+		} else if(strcmp(argv[i], "--stretch") == 0) {
+			stretch = true;
+		} else if(strcmp(argv[i], "--no-stretch") == 0) {
+			stretch = false;
 		} else if(argv[i][0] == '-') {
 			fprintf(stderr, "Invalid flag: %s\n", argv[i]);
 			usage();
@@ -1524,7 +1539,7 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 	}
 	else
 	{
-		double width = 1.0 * width_ratio;
+		double width = (stretch ? 1.0 : 0.5) * width_ratio;
 		double height = 0.5;
 		AddCubeVertex(-width, 	 height, zoom, 1.0, 0.0, vertdata);
 		AddCubeVertex(width, 	 height, zoom, 0.0, 0.0, vertdata);
@@ -1837,11 +1852,15 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 		if( nEye == vr::Eye_Left )
 		{
 			float offset = 0.0f;
+			if(view_mode == ViewMode::RIGHT_LEFT)
+				offset = 0.5f;
 			glUniform1fv(m_nSceneTextureOffsetXLocation, 1, &offset);
 		}
 		else if( nEye == vr::Eye_Right )
 		{
 			float offset = 0.5f;
+			if(view_mode == ViewMode::RIGHT_LEFT)
+				offset = 0.0f;
 			glUniform1fv(m_nSceneTextureOffsetXLocation, 1, &offset);
 		}
 

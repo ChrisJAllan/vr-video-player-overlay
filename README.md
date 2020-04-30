@@ -9,3 +9,7 @@ vr video player can be built using [sibs](https://github.com/DEC05EBA/sibs) or i
 # How to use
 Start a video in your video player of choice (tested with mpv) and then get the x11 window id (this can be done with xwininfo) and then fullscreen the video (for best quality).
 Then launch `vr_video_player` with the x11 window id.
+
+If the video is not meant to be viewed as a sphere but as a rectangle, then pass the `--flat` option when running vr video player.\
+If the video is flipped where the right eye is on the left side, then pass the `--right-left` option when running vr video player.\
+If the video is stretched, then pass the `--no-stretch`option when running vr video player. Note: This option only works when also using the `--flat` option.
