@@ -34,7 +34,6 @@
 #include <SDL.h>
 #include <GL/glew.h>
 #include <SDL_opengl.h>
-#include <SOIL/SOIL.h>
 #include <GL/glu.h>
 #include <openvr.h>
 #define GLX_GLXEXT_PROTOTYPES
@@ -195,7 +194,6 @@ private: // OpenGL bookkeeping
 	GLuint m_iTexture;
 
 	unsigned int m_uiVertcount;
-	unsigned int m_arrow_vert_count;
 
 	GLuint m_glSceneVertBuffer;
 	GLuint m_unSceneVAO;
