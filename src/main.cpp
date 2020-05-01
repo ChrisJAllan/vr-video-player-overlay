@@ -1129,8 +1129,9 @@ bool CMainApplication::CreateAllShaders()
 		"out vec2 v2UVcoords;\n"
 		"void main()\n"
 		"{\n"
-		"	v2UVcoords = v2UVcoordsIn * vec2(0.5, 1.0) + vec2(texture_offset_x, 0.0);\n"
-		"	gl_Position = matrix * (position + vec4(position_offset, 0.0));\n"
+		"	v2UVcoords = vec2(1.0 - v2UVcoordsIn.x, v2UVcoordsIn.y) * vec2(0.5, 1.0) + vec2(texture_offset_x, 0.0);\n"
+		"   vec4 inverse_pos = vec4(position.x, position.y, -position.z, position.w);\n"
+		"	gl_Position = matrix * (inverse_pos + vec4(position_offset, 0.0));\n"
 		"}\n",
 
 		// Fragment Shader
