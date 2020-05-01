@@ -1350,8 +1350,8 @@ void CMainApplication::SetupScene()
 
 	std::vector<float> vertdataarray;
 #if 0
-	glm::mat4 matScale =glm::scale(glm::identity<glm::mat4>(), glm::vec3(m_fScale, m_fScale, m_fScale));
-	glm::mat4 matTransform = glm::translate(glm::identity<glm::mat4>(),
+	glm::mat4 matScale =glm::scale(glm::mat4(1.0f), glm::vec3(m_fScale, m_fScale, m_fScale));
+	glm::mat4 matTransform = glm::translate(glm::mat4(1.0f),
 		glm::vec3(
 			-( (float)m_iSceneVolumeWidth * m_fScaleSpacing ) / 2.f,
 			-( (float)m_iSceneVolumeHeight * m_fScaleSpacing ) / 2.f,
@@ -1367,19 +1367,19 @@ void CMainApplication::SetupScene()
 			for( int x = 0; x< m_iSceneVolumeWidth; x++ )
 			{
 				AddCubeToScene( mat, vertdataarray );
-				mat = mat * glm::translate(glm::identity<glm::mat4>(), glm::vec3(m_fScaleSpacing, 0, 0 ));
+				mat = mat * glm::translate(glm::mat4(1.0f), glm::vec3(m_fScaleSpacing, 0, 0 ));
 			}
-			mat = mat * glm::translate(glm::identity<glm::mat4>(), glm::vec3(-((float)m_iSceneVolumeWidth) * m_fScaleSpacing, m_fScaleSpacing, 0 ));
+			mat = mat * glm::translate(glm::mat4(1.0f), glm::vec3(-((float)m_iSceneVolumeWidth) * m_fScaleSpacing, m_fScaleSpacing, 0 ));
 		}
-		mat = mat * glm::translate(glm::identity<glm::mat4>(), glm::vec3(0, -((float)m_iSceneVolumeHeight) * m_fScaleSpacing, m_fScaleSpacing ));
+		mat = mat * glm::translate(glm::mat4(1.0f), glm::vec3(0, -((float)m_iSceneVolumeHeight) * m_fScaleSpacing, m_fScaleSpacing ));
 	}
 
 #else
-	glm::mat4 matScale = glm::identity<glm::mat4>();
+	glm::mat4 matScale = glm::mat4(1.0f);
 	matScale = glm::scale(matScale, glm::vec3(m_fScale, m_fScale, m_fScale));
-	glm::mat4 matTransform = glm::identity<glm::mat4>();
+	glm::mat4 matTransform = glm::mat4(1.0f);
 	/*
-	matTransform = glm::translate(glm::identity<glm::mat4>(),
+	matTransform = glm::translate(glm::mat4(1.0f),
 		glm::vec3(-m_fScale*0.5f, -m_fScale*0.5f, 0.5f)
 	);
 	*/
@@ -1942,7 +1942,7 @@ void CMainApplication::RenderCompanionWindow()
 glm::mat4 CMainApplication::GetHMDMatrixProjectionEye( vr::Hmd_Eye nEye )
 {
 	if ( !m_pHMD )
-		return glm::identity<glm::mat4>();
+		return glm::mat4(1.0f);
 
 	vr::HmdMatrix44_t mat = m_pHMD->GetProjectionMatrix( nEye, m_fNearClip, m_fFarClip );
 
@@ -1961,7 +1961,7 @@ glm::mat4 CMainApplication::GetHMDMatrixProjectionEye( vr::Hmd_Eye nEye )
 glm::mat4 CMainApplication::GetHMDMatrixPoseEye( vr::Hmd_Eye nEye )
 {
 	if ( !m_pHMD )
-		return glm::identity<glm::mat4>();
+		return glm::mat4(1.0f);
 
 	vr::HmdMatrix34_t matEyeRight = m_pHMD->GetEyeToHeadTransform( nEye );
 	glm::mat4 matrixObj(
