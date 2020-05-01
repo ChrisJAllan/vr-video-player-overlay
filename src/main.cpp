@@ -386,8 +386,8 @@ static void usage() {
 CMainApplication::CMainApplication( int argc, char *argv[] )
 	: m_pCompanionWindow(NULL)
 	, m_pContext(NULL)
-	, m_nCompanionWindowWidth( 1920 )
-	, m_nCompanionWindowHeight( 1080 )
+	, m_nCompanionWindowWidth( 800 )
+	, m_nCompanionWindowHeight( 600 )
 	, m_unSceneProgramID( 0 )
 	, m_unCompanionWindowProgramID( 0 )
 	, m_unControllerTransformProgramID( 0 )
@@ -396,7 +396,7 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	, m_bDebugOpenGL( false )
 	, m_bVerbose( false )
 	, m_bPerf( false )
-	, m_bVblank( true )
+	, m_bVblank( false )
 	, m_bGlFinishHack( true )
 	, m_glControllerVertBuffer( 0 )
 	, m_unControllerVAO( 0 )
@@ -999,7 +999,7 @@ void CMainApplication::RenderFrame()
 	// for now as fast as possible
 	if ( m_pHMD )
 	{
-		RenderControllerAxes();
+		//RenderControllerAxes();
 		RenderStereoTargets();
 		RenderCompanionWindow();
 
@@ -1874,7 +1874,7 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 		glDrawArrays( GL_TRIANGLES, 0, m_uiVertcount );
 		glBindVertexArray( 0 );
 	}
-
+#if 0
 	bool bIsInputAvailable = m_pHMD->IsInputAvailable();
 
 	if( bIsInputAvailable )
@@ -1901,7 +1901,7 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 
 		m_rHand[eHand].m_pRenderModel->Draw();
 	}
-
+#endif
 	glUseProgram( 0 );
 }
 
