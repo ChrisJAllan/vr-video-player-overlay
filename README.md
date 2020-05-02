@@ -13,3 +13,9 @@ Then launch `vr_video_player` with the x11 window id.
 If the video is not meant to be viewed as a sphere but as a rectangle, then pass the `--flat` option when running vr video player.\
 If the video is flipped where the right eye is on the left side, then pass the `--right-left` option when running vr video player.\
 If the video is stretched, then pass the `--no-stretch`option when running vr video player. Note: This option only works when also using the `--flat` option.
+
+# Games
+This vr video player can also be used to play games in VR to to get a 3D effect, and even for games that don't support VR.\
+For games such as Trine that have built-in side-by-side view, you can launch it with proton and there is a launch option for side-by-side view. Select this and when the game launches, get the X11 window id of the game
+and launch vr video player with the `--flat` option.\
+For games that do not have built-in side-by-side view, you can use [ReShade](https://reshade.me/) and [SuperDepth3D_VR.fx](https://github.com/BlueSkyDefender/Depth3D) effect with proton. This will make the game render with side-by-side view and you can then get the X11 window id of the game and launch vr video player with the `--flat` option. The game you are using might require settings to be changed manually in ReShade for SuperDepth3D_VR to make it look better.
