@@ -82,6 +82,7 @@ private:
 };
 
 static bool g_bPrintf = true;
+static const float half_pi = 1.5707963267948f;
 
 //-----------------------------------------------------------------------------
 // Purpose:
@@ -174,7 +175,7 @@ private: // OpenGL bookkeeping
 	int m_iTrackedControllerCount_Last;
 	int m_iValidPoseCount;
 	int m_iValidPoseCount_Last;
-	bool m_bShowCubes;
+	bool m_bResetRotation;
 	glm::vec2 m_vAnalogValue;
 
 	std::string m_strPoseClasses;                            // what classes we saw poses for this frame
@@ -215,6 +216,8 @@ private: // OpenGL bookkeeping
 	glm::mat4 m_mat4ProjectionRight;
 
 	glm::vec3 hmd_pos = glm::vec3(0.0f, 0.0f, 0.0f);
+	float hmd_rot = 0.0f;
+	float m_reset_rotation = 0.0f;
 
 	struct VertexDataScene
 	{
@@ -237,7 +240,6 @@ private: // OpenGL bookkeeping
 
 	GLint m_nSceneMatrixLocation;
 	GLint m_nSceneTextureOffsetXLocation;
-	GLint m_nScenePositionOffsetLocation;
 	GLint m_nControllerMatrixLocation;
 	GLint m_nRenderModelMatrixLocation;
 
@@ -401,7 +403,6 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	, m_unSceneVAO( 0 )
 	, m_nSceneMatrixLocation( -1 )
 	, m_nSceneTextureOffsetXLocation( -1 )
-	, m_nScenePositionOffsetLocation( -1 )
 	, m_nControllerMatrixLocation( -1 )
 	, m_nRenderModelMatrixLocation( -1 )
 	, m_iTrackedControllerCount( 0 )
@@ -410,7 +411,7 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	, m_iValidPoseCount_Last( -1 )
 	, m_iSceneVolumeInit( 10 )
 	, m_strPoseClasses("")
-	, m_bShowCubes( true )
+	, m_bResetRotation( false )
 {
 	for(int i = 1; i < argc; ++i) {
 		if(strcmp(argv[i], "--flat") == 0) {
@@ -845,9 +846,9 @@ bool CMainApplication::HandleInput()
 			{
 				bRet = true;
 			}
-			if( sdlEvent.key.keysym.sym == SDLK_c )
+			if( sdlEvent.key.keysym.sym == SDLK_w )
 			{
-				m_bShowCubes = !m_bShowCubes;
+				m_bResetRotation = true;
 			}
 		}
 	}
@@ -875,11 +876,12 @@ bool CMainApplication::HandleInput()
 	actionSet.ulActionSet = m_actionsetDemo;
 	vr::VRInput()->UpdateActionState( &actionSet, sizeof(actionSet), 1 );
 
-	m_bShowCubes = !GetDigitalActionState( m_actionHideCubes );
-	if(GetDigitalActionState( m_actionHideCubes )) {
-		//printf("reset position!\n");
+	if(GetDigitalActionState( m_actionHideCubes ) || m_bResetRotation) {
+		printf("reset rotation!\n");
 		//printf("pos, %f, %f, %f\n", m_mat4HMDPose[0][2], m_mat4HMDPose[1][2], m_mat4HMDPose[2][2]);
 		//m_resetPos = m_mat4HMDPose;
+		m_bResetRotation = false;
+		m_reset_rotation = hmd_rot;
 	}
 
 	vr::VRInputValueHandle_t ulHapticDevice;
@@ -1120,7 +1122,6 @@ bool CMainApplication::CreateAllShaders()
 		"#version 410\n"
 		"uniform mat4 matrix;\n"
 		"uniform float texture_offset_x;\n"
-		"uniform vec3 position_offset;\n"
 		"layout(location = 0) in vec4 position;\n"
 		"layout(location = 1) in vec2 v2UVcoordsIn;\n"
 		"layout(location = 2) in vec3 v3NormalIn;\n"
@@ -1129,7 +1130,7 @@ bool CMainApplication::CreateAllShaders()
 		"{\n"
 		"	v2UVcoords = vec2(1.0 - v2UVcoordsIn.x, v2UVcoordsIn.y) * vec2(0.5, 1.0) + vec2(texture_offset_x, 0.0);\n"
 		"   vec4 inverse_pos = vec4(position.x, position.y, -position.z, position.w);\n"
-		"	gl_Position = matrix * (inverse_pos + vec4(position_offset, 0.0));\n"
+		"	gl_Position = matrix * inverse_pos;\n"
 		"}\n",
 
 		// Fragment Shader
@@ -1153,12 +1154,6 @@ bool CMainApplication::CreateAllShaders()
 	if( m_nSceneTextureOffsetXLocation == -1 )
 	{
 		dprintf( "Unable to find texture_offset_x uniform in scene shader\n" );
-		return false;
-	}
-	m_nScenePositionOffsetLocation = glGetUniformLocation( m_unSceneProgramID, "position_offset" );
-	if( m_nScenePositionOffsetLocation == -1 )
-	{
-		dprintf( "Unable to find position_offset uniform in scene shader\n" );
 		return false;
 	}
 
@@ -1845,33 +1840,28 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_DEPTH_TEST);
 
-	if( m_bShowCubes )
+	glUseProgram( m_unSceneProgramID );
+	glUniformMatrix4fv( m_nSceneMatrixLocation, 1, GL_FALSE, glm::value_ptr(GetCurrentViewProjectionMatrix( nEye )));
+
+	if( nEye == vr::Eye_Left )
 	{
-		glUseProgram( m_unSceneProgramID );
-		glUniformMatrix4fv( m_nSceneMatrixLocation, 1, GL_FALSE, glm::value_ptr(GetCurrentViewProjectionMatrix( nEye )));
-
-		if( nEye == vr::Eye_Left )
-		{
-			float offset = 0.0f;
-			if(view_mode == ViewMode::RIGHT_LEFT)
-				offset = 0.5f;
-			glUniform1fv(m_nSceneTextureOffsetXLocation, 1, &offset);
-		}
-		else if( nEye == vr::Eye_Right )
-		{
-			float offset = 0.5f;
-			if(view_mode == ViewMode::RIGHT_LEFT)
-				offset = 0.0f;
-			glUniform1fv(m_nSceneTextureOffsetXLocation, 1, &offset);
-		}
-
-		glUniform3fv(m_nScenePositionOffsetLocation, 1, &hmd_pos[0]);
-
-		glBindVertexArray( m_unSceneVAO );
-		glBindTexture( GL_TEXTURE_2D, m_iTexture );
-		glDrawArrays( GL_TRIANGLES, 0, m_uiVertcount );
-		glBindVertexArray( 0 );
+		float offset = 0.0f;
+		if(view_mode == ViewMode::RIGHT_LEFT)
+			offset = 0.5f;
+		glUniform1fv(m_nSceneTextureOffsetXLocation, 1, &offset);
 	}
+	else if( nEye == vr::Eye_Right )
+	{
+		float offset = 0.5f;
+		if(view_mode == ViewMode::RIGHT_LEFT)
+			offset = 0.0f;
+		glUniform1fv(m_nSceneTextureOffsetXLocation, 1, &offset);
+	}
+
+	glBindVertexArray( m_unSceneVAO );
+	glBindTexture( GL_TEXTURE_2D, m_iTexture );
+	glDrawArrays( GL_TRIANGLES, 0, m_uiVertcount );
+	glBindVertexArray( 0 );
 #if 0
 	bool bIsInputAvailable = m_pHMD->IsInputAvailable();
 
@@ -1985,13 +1975,16 @@ glm::mat4 CMainApplication::GetCurrentViewProjectionMatrix( vr::Hmd_Eye nEye )
 	//glm::mat4 pp;
 	//memcpy(&pp[0], m_mat4HMDPose.get(), sizeof(m_mat4HMDPose));
 	//memcpy(&m_mat4HMDPose[0], &pp[0], sizeof(pp));
+	glm::mat4 hmd_pose = m_mat4HMDPose;
+	hmd_pose = glm::translate(hmd_pose, hmd_pos);
+	hmd_pose = glm::rotate(hmd_pose, m_reset_rotation, glm::vec3(0.0f, 1.0f, 0.0f));
 	if( nEye == vr::Eye_Left )
 	{
-		matMVP = m_mat4ProjectionLeft * m_mat4eyePosLeft * m_mat4HMDPose;
+		matMVP = m_mat4ProjectionLeft * m_mat4eyePosLeft * hmd_pose;
 	}
 	else if( nEye == vr::Eye_Right )
 	{
-		matMVP = m_mat4ProjectionRight * m_mat4eyePosRight * m_mat4HMDPose;
+		matMVP = m_mat4ProjectionRight * m_mat4eyePosRight * hmd_pose;
 	}
 
 	return matMVP;
@@ -2019,13 +2012,17 @@ void CMainApplication::UpdateHMDMatrixPose()
 			switch (m_pHMD->GetTrackedDeviceClass(nDevice))
 			{
 			case vr::TrackedDeviceClass_Controller:        m_rDevClassChar[nDevice] = 'C'; break;
-			case vr::TrackedDeviceClass_HMD:
+			case vr::TrackedDeviceClass_HMD: {
 				//printf("pos: %f, %f, %f\n", m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[0][3], m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[1][3], m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[2][3]);
 				hmd_pos.x = m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[0][3];
 				hmd_pos.y = m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[1][3];
 				hmd_pos.z = m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[2][3];
+
+				glm::vec3 *vec_z = (glm::vec3*)&m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[2];
+				hmd_rot = atan2(vec_z->z, vec_z->x) - half_pi;
 				m_rDevClassChar[nDevice] = 'H';
 				break;
+			}
 			case vr::TrackedDeviceClass_Invalid:           m_rDevClassChar[nDevice] = 'I'; break;
 			case vr::TrackedDeviceClass_GenericTracker:    m_rDevClassChar[nDevice] = 'G'; break;
 			case vr::TrackedDeviceClass_TrackingReference: m_rDevClassChar[nDevice] = 'T'; break;
@@ -2125,7 +2122,6 @@ glm::mat4 CMainApplication::ConvertSteamVRMatrixToMatrix4( const vr::HmdMatrix34
 		);
 	return matrixObj;
 }
-
 
 //-----------------------------------------------------------------------------
 // Purpose: Create/destroy GL Render Models
