@@ -31,6 +31,10 @@
 
 // Modified by: DEC05EBA
 
+extern "C" {
+#include "../include/window_texture.h"
+}
+
 #include <SDL.h>
 #include <GL/glew.h>
 #include <SDL_opengl.h>
@@ -42,7 +46,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <X11/extensions/Xcomposite.h>
 
 #include <stdio.h>
 #include <string>
@@ -103,8 +106,6 @@ public:
 	bool HandleInput();
 	void ProcessVREvent( const vr::VREvent_t & event );
 	void RenderFrame();
-
-	bool SetupTexturemaps();
 
 	void SetupScene();
 	void AddCubeToScene( const glm::mat4 &mat, std::vector<float> &vertdata );
@@ -192,8 +193,6 @@ private: // OpenGL bookkeeping
 	float m_fNearClip;
 	float m_fFarClip;
 
-	GLuint m_iTexture;
-
 	unsigned int m_uiVertcount;
 
 	GLuint m_glSceneVertBuffer;
@@ -271,9 +270,12 @@ private: // OpenGL bookkeeping
 private: // X compositor
 	Display *x_display = nullptr;
 	Window src_window_id = None;
-	Pixmap src_window_pixmap;
-	GLXFBConfig *configs;
-	GLXPixmap glxpixmap;
+	WindowTexture window_texture;
+
+	int window_width;
+	int window_height;
+	Uint32 window_resize_time;
+	bool window_resized;
 
 	GLint pixmap_texture_width = 0;
 	GLint pixmap_texture_height = 0;
@@ -508,18 +510,6 @@ std::string GetTrackedDeviceString( vr::TrackedDeviceIndex_t unDevice, vr::Track
 	return sResult;
 }
 
-static bool x11_supports_composite_named_window_pixmap(Display *dpy)
-{
-    int extension_major;
-    int extension_minor;
-    if(!XCompositeQueryExtension(dpy, &extension_major, &extension_minor))
-        return false;
-
-    int major_version;
-    int minor_version;
-    return XCompositeQueryVersion(dpy, &major_version, &minor_version) && (major_version > 0 || minor_version >= 2);
-}
-
 
 //-----------------------------------------------------------------------------
 // Purpose:
@@ -533,14 +523,17 @@ bool CMainApplication::BInit()
 		return false;
 	}
 
-	bool has_name_pixmap = x11_supports_composite_named_window_pixmap(x_display);
-    if(!has_name_pixmap)
-	{
-        fprintf(stderr, "Error: XComposite name pixmap is not supported by your X11 server\n");
-        return false;
-    }
+	XWindowAttributes xwa;
+	if(!XGetWindowAttributes(x_display, src_window_id, &xwa)) {
+		fprintf(stderr, "Error: Invalid window id: %lud\n", src_window_id);
+		return false;
+	}
+	window_width = xwa.width;
+	window_height = xwa.height;
+	window_resize_time = SDL_GetTicks();
+	window_resized = false;
 
-	XCompositeRedirectWindow(x_display, src_window_id, CompositeRedirectAutomatic);
+	XSelectInput(x_display, src_window_id, StructureNotifyMask);
 
 	if ( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_TIMER ) < 0 )
 	{
@@ -566,8 +559,8 @@ bool CMainApplication::BInit()
 	int nWindowPosY = 100;
 	Uint32 unWindowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN;
 
-	SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, 4 );
-	SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 1 );
+	SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, 3 );
+	SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 2 );
 	//SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY );
 	SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE );
 
@@ -625,7 +618,6 @@ bool CMainApplication::BInit()
  	m_fNearClip = 0.01f;
  	m_fFarClip = 30.0f;
  
- 	m_iTexture = 0;
  	m_uiVertcount = 0;
  
 // 		m_MillisecondsTimer.start(1, this);
@@ -709,8 +701,19 @@ bool CMainApplication::BInitGL()
 	if( !CreateAllShaders() )
 		return false;
 
-	if(!SetupTexturemaps())
+	if(window_texture_init(&window_texture, x_display, src_window_id) != 0)
 		return false;
+
+	pixmap_texture_width = 0;
+	pixmap_texture_height = 0;
+	glBindTexture(GL_TEXTURE_2D, window_texture_get_opengl_texture_id(&window_texture));
+	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &pixmap_texture_width);
+	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &pixmap_texture_height);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	glGenVertexArrays( 1, &m_unSceneVAO );
+	glGenBuffers( 1, &m_glSceneVertBuffer );
+
 	SetupScene();
 	SetupCameras();
 	if(!SetupStereoRenderTargets())
@@ -808,6 +811,8 @@ void CMainApplication::Shutdown()
 		}
 	}
 
+	window_texture_deinit(&window_texture);
+
 	if( m_pCompanionWindow )
 	{
 		SDL_DestroyWindow(m_pCompanionWindow);
@@ -816,13 +821,8 @@ void CMainApplication::Shutdown()
 
 	SDL_Quit();
 
-	if (x_display) {
-		glXReleaseTexImageEXT(x_display, glxpixmap, GLX_FRONT_EXT);
-		glXDestroyPixmap(x_display, glxpixmap);
-		XFree(configs);
-		XFreePixmap(x_display, src_window_pixmap);
+	if (x_display)
 		XCloseDisplay(x_display);
-	}
 }
 
 //-----------------------------------------------------------------------------
@@ -853,14 +853,29 @@ bool CMainApplication::HandleInput()
 		}
 	}
 
-	XEvent x_event;
+	XEvent xev;
 
-#if 0
-	if(XCheckTypedWindowEvent(x_display, src_window_id, damage_event + XDamageNotify, &x_event)) {
+	if (XCheckTypedWindowEvent(x_display, src_window_id, ConfigureNotify, &xev) && xev.xconfigure.window == src_window_id) {
+		// Window resize
+		if(xev.xconfigure.width != window_width || xev.xconfigure.height != window_height) {
+			window_width = xev.xconfigure.width;
+			window_height = xev.xconfigure.height;
+			window_resize_time = SDL_GetTicks();
+			window_resized = true;
+		}
 	}
-#endif
 
-
+	Uint32 time_now = SDL_GetTicks();
+	const int window_resize_timeout = 500; /* 0.5 seconds */
+	if(window_resized && time_now - window_resize_time >= window_resize_timeout) {
+		window_resized = false;
+		window_texture_on_resize(&window_texture);
+		glBindTexture(GL_TEXTURE_2D, window_texture_get_opengl_texture_id(&window_texture));
+		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &pixmap_texture_width);
+		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &pixmap_texture_height);
+		glBindTexture(GL_TEXTURE_2D, 0);
+		SetupScene();
+	}
 
 	// Process SteamVR events
 	vr::VREvent_t event;
@@ -1256,86 +1271,6 @@ bool CMainApplication::CreateAllShaders()
 
 
 //-----------------------------------------------------------------------------
-// Purpose:
-//-----------------------------------------------------------------------------
-bool CMainApplication::SetupTexturemaps()
-{
-	GLfloat fLargest;
-
-	const int pixmap_config[] = {
-		GLX_BIND_TO_TEXTURE_RGBA_EXT, True,
-		GLX_DRAWABLE_TYPE, GLX_PIXMAP_BIT,
-		GLX_BIND_TO_TEXTURE_TARGETS_EXT, GLX_TEXTURE_2D_BIT_EXT,
-		//GLX_BIND_TO_MIPMAP_TEXTURE_EXT, True,
-		GLX_BUFFER_SIZE, 32,
-		GLX_ALPHA_SIZE, 8,
-		GLX_DOUBLEBUFFER, False,
-		GLX_Y_INVERTED_EXT, (int)GLX_DONT_CARE,
-		None
-    };
-
-    const int pixmap_attribs[] = {
-		GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_2D_EXT,
-		GLX_TEXTURE_FORMAT_EXT, GLX_TEXTURE_FORMAT_RGB_EXT,
-		//GLX_MIPMAP_TEXTURE_EXT, True,
-		None, None, None
-    };
-
-	int c;
-	configs = glXChooseFBConfig(x_display, 0, pixmap_config, &c);
-	if (!configs)
-	{
-		printf("Failed too choose fb config\n");
-		return false;
-	}
-
-	src_window_pixmap = XCompositeNameWindowPixmap(x_display, src_window_id);
-	if (!src_window_pixmap)
-	{
-		printf("Failed to get pixmap for window %ld\n", src_window_id);
-		return false;
-	}
-
-	glxpixmap = glXCreatePixmap(x_display, *configs, src_window_pixmap, pixmap_attribs);
-	if (!glxpixmap)
-	{
-		printf("Failed to create pixmap\n");
-		return false;
-	}
-
-
-	glGenTextures(1, &m_iTexture );
-	glBindTexture( GL_TEXTURE_2D, m_iTexture );
-
-	glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-	glXBindTexImageEXT(x_display, glxpixmap, GLX_FRONT_EXT, NULL);
-	//glGenerateTextureMipmapEXT(glxpixmap, GL_TEXTURE_2D);
-
-	//glGenerateMipmap(GL_TEXTURE_2D);
-
-	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
-	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
-	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);//GL_LINEAR_MIPMAP_LINEAR );
-	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-
-	glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &fLargest);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, fLargest);
-
-	pixmap_texture_width = 0;
-	pixmap_texture_height = 0;
-	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &pixmap_texture_width);
-	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &pixmap_texture_height);
-	 	
-	glBindTexture( GL_TEXTURE_2D, 0 );
-
-	return ( m_iTexture != 0 );
-}
-
-
-//-----------------------------------------------------------------------------
 // Purpose: create a sea of cubes
 //-----------------------------------------------------------------------------
 void CMainApplication::SetupScene()
@@ -1384,10 +1319,7 @@ void CMainApplication::SetupScene()
 #endif
 	m_uiVertcount = vertdataarray.size()/5;
 	
-	glGenVertexArrays( 1, &m_unSceneVAO );
 	glBindVertexArray( m_unSceneVAO );
-
-	glGenBuffers( 1, &m_glSceneVertBuffer );
 	glBindBuffer( GL_ARRAY_BUFFER, m_glSceneVertBuffer );
 	glBufferData( GL_ARRAY_BUFFER, sizeof(float) * vertdataarray.size(), &vertdataarray[0], GL_STATIC_DRAW);
 
@@ -1448,8 +1380,8 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 		double radius_height = 0.5;
 		double radius = 0.5 * width_ratio;
 
-		for(long row = 0; row < rows-1; ++row) {
-			for(long column = 0; column < columns-1; ++column) {
+		for(long row = 0; row < rows; ++row) {
+			for(long column = 0; column < columns; ++column) {
 				double offset_angle = 0.0;//angle_x*0.5;
 
 				double y_sin1 = sin((double)row / (double)rows * 3.14);
@@ -1772,24 +1704,7 @@ void CMainApplication::RenderStereoTargets()
 {
 	glClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
 	glEnable( GL_MULTISAMPLE );
-	//TODO: Fix this
-#if 0
-	glBindTexture( GL_TEXTURE_2D, m_iTexture );
 
-	glXBindTexImageEXT(x_display, glxpixmap, GLX_FRONT_EXT, NULL);
-	//glGenerateTextureMipmapEXT(glxpixmap, GL_TEXTURE_2D);
-
-	glGenerateMipmap(GL_TEXTURE_2D);
-
-	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
-	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
-	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR );
-
-	GLfloat fLargest;
-	glGetFloatv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &fLargest );
-	glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, fLargest );
-#endif
 	// Left Eye
 	glBindFramebuffer( GL_FRAMEBUFFER, leftEyeDesc.m_nRenderFramebufferId );
  	glViewport(0, 0, m_nRenderWidth, m_nRenderHeight );
@@ -1859,7 +1774,7 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 	}
 
 	glBindVertexArray( m_unSceneVAO );
-	glBindTexture( GL_TEXTURE_2D, m_iTexture );
+	glBindTexture( GL_TEXTURE_2D, window_texture_get_opengl_texture_id(&window_texture) );
 	glDrawArrays( GL_TRIANGLES, 0, m_uiVertcount );
 	glBindVertexArray( 0 );
 #if 0
