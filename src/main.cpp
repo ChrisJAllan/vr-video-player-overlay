@@ -239,6 +239,7 @@ private: // OpenGL bookkeeping
 
 	GLint m_nSceneMatrixLocation;
 	GLint m_nSceneTextureOffsetXLocation;
+	GLint m_nSceneTextureScaleXLocation;
 	GLint m_nControllerMatrixLocation;
 	GLint m_nRenderModelMatrixLocation;
 
@@ -282,12 +283,13 @@ private: // X compositor
 
 	enum class ViewMode {
 		LEFT_RIGHT,
-		RIGHT_LEFT
+		RIGHT_LEFT,
+		PLANE
 	};
 
 	bool sphere_projection = true;
 	double zoom = 0.0;
-	ViewMode view_mode = ViewMode::LEFT_RIGHT;
+	ViewMode view_mode = ViewMode::PLANE;
 	bool stretch = true;
 };
 
@@ -378,7 +380,7 @@ void dprintf( const char *fmt, ... )
 }
 
 static void usage() {
-	fprintf(stderr, "usage: vr-video-player [--flat] [--left-right|--right-left] [--stretch|--no-stretch] [--zoom zoom-level] <window_id>\n");
+	fprintf(stderr, "usage: vr-video-player [--flat] [--left-right|--right-left|--plane] [--stretch|--no-stretch] [--zoom zoom-level] <window_id>\n");
 	exit(1);
 }
 
@@ -405,6 +407,7 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	, m_unSceneVAO( 0 )
 	, m_nSceneMatrixLocation( -1 )
 	, m_nSceneTextureOffsetXLocation( -1 )
+	, m_nSceneTextureScaleXLocation( -1 )
 	, m_nControllerMatrixLocation( -1 )
 	, m_nRenderModelMatrixLocation( -1 )
 	, m_iTrackedControllerCount( 0 )
@@ -425,6 +428,9 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 			view_mode = ViewMode::LEFT_RIGHT;
 		} else if(strcmp(argv[i], "--right-left") == 0) {
 			view_mode = ViewMode::RIGHT_LEFT;
+		} else if(strcmp(argv[i], "--plane") == 0) {
+			view_mode = ViewMode::PLANE;
+			cylinder_projection = true;
 		} else if(strcmp(argv[i], "--stretch") == 0) {
 			stretch = true;
 		} else if(strcmp(argv[i], "--no-stretch") == 0) {
@@ -1137,13 +1143,14 @@ bool CMainApplication::CreateAllShaders()
 		"#version 410\n"
 		"uniform mat4 matrix;\n"
 		"uniform float texture_offset_x;\n"
+		"uniform float texture_scale_x;\n"
 		"layout(location = 0) in vec4 position;\n"
 		"layout(location = 1) in vec2 v2UVcoordsIn;\n"
 		"layout(location = 2) in vec3 v3NormalIn;\n"
 		"out vec2 v2UVcoords;\n"
 		"void main()\n"
 		"{\n"
-		"	v2UVcoords = vec2(1.0 - v2UVcoordsIn.x, v2UVcoordsIn.y) * vec2(0.5, 1.0) + vec2(texture_offset_x, 0.0);\n"
+		"	v2UVcoords = vec2(1.0 - v2UVcoordsIn.x, v2UVcoordsIn.y) * vec2(texture_scale_x, 1.0) + vec2(texture_offset_x, 0.0);\n"
 		"   vec4 inverse_pos = vec4(position.x, position.y, -position.z, position.w);\n"
 		"	gl_Position = matrix * inverse_pos;\n"
 		"}\n",
@@ -1169,6 +1176,12 @@ bool CMainApplication::CreateAllShaders()
 	if( m_nSceneTextureOffsetXLocation == -1 )
 	{
 		dprintf( "Unable to find texture_offset_x uniform in scene shader\n" );
+		return false;
+	}
+	m_nSceneTextureScaleXLocation = glGetUniformLocation( m_unSceneProgramID, "texture_scale_x" );
+	if( m_nSceneTextureScaleXLocation == -1 )
+	{
+		dprintf( "Unable to find texture_scale_x uniform in scene shader\n" );
 		return false;
 	}
 
@@ -1761,16 +1774,28 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 	if( nEye == vr::Eye_Left )
 	{
 		float offset = 0.0f;
-		if(view_mode == ViewMode::RIGHT_LEFT)
+		float scale = 0.5f;
+		if(view_mode == ViewMode::RIGHT_LEFT) {
 			offset = 0.5f;
+		} else if(view_mode == ViewMode::PLANE) {
+			offset = 0.0f;
+			scale = 1.0f;
+		}
 		glUniform1fv(m_nSceneTextureOffsetXLocation, 1, &offset);
+		glUniform1fv(m_nSceneTextureScaleXLocation, 1, &scale);
 	}
 	else if( nEye == vr::Eye_Right )
 	{
 		float offset = 0.5f;
-		if(view_mode == ViewMode::RIGHT_LEFT)
+		float scale = 0.5f;
+		if (view_mode == ViewMode::RIGHT_LEFT) {
 			offset = 0.0f;
+		} else if (view_mode == ViewMode::PLANE) {
+			offset = 0.0f;
+			scale = 1.0f;
+		}
 		glUniform1fv(m_nSceneTextureOffsetXLocation, 1, &offset);
+		glUniform1fv(m_nSceneTextureScaleXLocation, 1, &scale);
 	}
 
 	glBindVertexArray( m_unSceneVAO );
