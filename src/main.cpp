@@ -214,6 +214,7 @@ private: // OpenGL bookkeeping
 	glm::mat4 m_mat4ProjectionLeft;
 	glm::mat4 m_mat4ProjectionRight;
 
+	glm::vec3 current_pos = glm::vec3(0.0f, 0.0f, 0.0f);
 	glm::vec3 hmd_pos = glm::vec3(0.0f, 0.0f, 0.0f);
 	float hmd_rot = 0.0f;
 	float m_reset_rotation = 0.0f;
@@ -901,7 +902,8 @@ bool CMainApplication::HandleInput()
 	if(GetDigitalActionState( m_actionHideCubes ) || m_bResetRotation) {
 		printf("reset rotation!\n");
 		//printf("pos, %f, %f, %f\n", m_mat4HMDPose[0][2], m_mat4HMDPose[1][2], m_mat4HMDPose[2][2]);
-		//m_resetPos = m_mat4HMDPose;
+		// m_resetPos = m_mat4HMDPose;
+		hmd_pos = current_pos;
 		m_bResetRotation = false;
 		m_reset_rotation = hmd_rot;
 	}
@@ -1987,9 +1989,9 @@ void CMainApplication::UpdateHMDMatrixPose()
 			case vr::TrackedDeviceClass_Controller:        m_rDevClassChar[nDevice] = 'C'; break;
 			case vr::TrackedDeviceClass_HMD: {
 				//printf("pos: %f, %f, %f\n", m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[0][3], m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[1][3], m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[2][3]);
-				hmd_pos.x = m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[0][3];
-				hmd_pos.y = m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[1][3];
-				hmd_pos.z = m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[2][3];
+				current_pos.x = m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[0][3];
+				current_pos.y = m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[1][3];
+				current_pos.z = m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[2][3];
 
 				glm::vec3 *vec_z = (glm::vec3*)&m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[2];
 				hmd_rot = atan2(vec_z->z, vec_z->x) - half_pi;
