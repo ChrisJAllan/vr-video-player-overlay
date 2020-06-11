@@ -288,6 +288,7 @@ private: // X compositor
 	};
 
 	bool sphere_projection = true;
+	bool cylinder_projection = true;
 	double zoom = 0.0;
 	ViewMode view_mode = ViewMode::PLANE;
 	bool stretch = true;
@@ -1355,13 +1356,13 @@ void CMainApplication::SetupScene()
 //-----------------------------------------------------------------------------
 // Purpose:
 //-----------------------------------------------------------------------------
-void CMainApplication::AddCubeVertex( float fl0, float fl1, float fl2, float fl3, float fl4, std::vector<float> &vertdata )
+void CMainApplication::AddCubeVertex( float x, float y, float z, float u, float v, std::vector<float> &vertdata )
 {
-	vertdata.push_back( fl0 );
-	vertdata.push_back( fl1 );
-	vertdata.push_back( fl2 );
-	vertdata.push_back( fl3 );
-	vertdata.push_back( fl4 );
+	vertdata.push_back( x );
+	vertdata.push_back( y );
+	vertdata.push_back( z );
+	vertdata.push_back( u );
+	vertdata.push_back( v );
 }
 
 
@@ -1478,8 +1479,40 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 			}
 		}
 	}
-	else
+	else if (cylinder_projection)
 	{
+		long columns = 64;
+		double angle_start = -0.8;
+		double angle_end = 0.8;
+		double radius = 4.5;
+		double height = radius;
+
+		double angle_len = angle_end - angle_start;
+
+		for(long column = 0; column < columns; ++column) {
+			double t1 = ((double)column / (double)columns);
+			double t2 = (((double)column + 1) / (double)columns);
+
+			double x1 = sin(angle_start + t1 * angle_len) * radius;
+			double y1 = cos(angle_start + t1 * angle_len) * radius;
+			double x2 = sin(angle_start + t2 * angle_len) * radius;
+			double y2 = cos(angle_start + t2 * angle_len) * radius;
+
+			//     2     n
+			// 1  /|   / |    m
+			// | / | /   |  / |
+			// |/  2     n/   |
+			// 1              m
+
+			AddCubeVertex(x1, height / 2, zoom + y1, 1 - t1, 0, vertdata);
+			AddCubeVertex(x2, height / 2, zoom + y2, 1 - t2, 0, vertdata);
+			AddCubeVertex(x1, -height / 2, zoom + y1, 1 - t1, 1, vertdata);
+
+			AddCubeVertex(x1, -height / 2, zoom + y1, 1 - t1, 1, vertdata);
+			AddCubeVertex(x2, height / 2, zoom + y2, 1 - t2, 0, vertdata);
+			AddCubeVertex(x2, -height / 2, zoom + y2, 1 - t2, 1, vertdata);
+		}
+	} else {
 		double width = (stretch ? 1.0 : 0.5) * width_ratio;
 		double height = 0.5;
 		AddCubeVertex(-width, 	 height, zoom, 1.0, 0.0, vertdata);
