@@ -849,11 +849,6 @@ bool CMainApplication::HandleInput()
 		}
 		else if ( sdlEvent.type == SDL_KEYDOWN )
 		{
-			if ( sdlEvent.key.keysym.sym == SDLK_ESCAPE 
-			     || sdlEvent.key.keysym.sym == SDLK_q )
-			{
-				bRet = true;
-			}
 			if( sdlEvent.key.keysym.sym == SDLK_w )
 			{
 				m_bResetRotation = true;
