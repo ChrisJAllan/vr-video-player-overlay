@@ -216,8 +216,8 @@ private: // OpenGL bookkeeping
 
 	glm::vec3 current_pos = glm::vec3(0.0f, 0.0f, 0.0f);
 	glm::vec3 hmd_pos = glm::vec3(0.0f, 0.0f, 0.0f);
-	float hmd_rot = 0.0f;
-	float m_reset_rotation = 0.0f;
+	glm::quat hmd_rot = glm::quat(0.0f, 0.0f, 0.0f, 1.0f);
+	glm::quat m_reset_rotation = glm::quat(0.0f, 0.0f, 0.0f, 0.0f);
 
 	struct VertexDataScene
 	{
@@ -905,7 +905,7 @@ bool CMainApplication::HandleInput()
 		// m_resetPos = m_mat4HMDPose;
 		hmd_pos = current_pos;
 		m_bResetRotation = false;
-		m_reset_rotation = hmd_rot;
+		m_reset_rotation = glm::inverse(hmd_rot);
 	}
 
 	vr::VRInputValueHandle_t ulHapticDevice;
@@ -1952,7 +1952,7 @@ glm::mat4 CMainApplication::GetCurrentViewProjectionMatrix( vr::Hmd_Eye nEye )
 	//memcpy(&m_mat4HMDPose[0], &pp[0], sizeof(pp));
 	glm::mat4 hmd_pose = m_mat4HMDPose;
 	hmd_pose = glm::translate(hmd_pose, hmd_pos);
-	hmd_pose = glm::rotate(hmd_pose, m_reset_rotation, glm::vec3(0.0f, 1.0f, 0.0f));
+	hmd_pose = hmd_pose * mat4_cast(m_reset_rotation);
 	if( nEye == vr::Eye_Left )
 	{
 		matMVP = m_mat4ProjectionLeft * m_mat4eyePosLeft * hmd_pose;
@@ -1993,8 +1993,8 @@ void CMainApplication::UpdateHMDMatrixPose()
 				current_pos.y = m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[1][3];
 				current_pos.z = m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[2][3];
 
-				glm::vec3 *vec_z = (glm::vec3*)&m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking.m[2];
-				hmd_rot = atan2(vec_z->z, vec_z->x) - half_pi;
+				glm::mat4 *mat = (glm::mat4*)&m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking;
+				hmd_rot = glm::quat_cast(*mat);
 				m_rDevClassChar[nDevice] = 'H';
 				break;
 			}
