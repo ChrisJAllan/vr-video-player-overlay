@@ -53,6 +53,7 @@ extern "C" {
 #include <vector>
 
 #include <unistd.h>
+#include <signal.h>
 #include <libgen.h>
 
 #ifndef _countof
@@ -107,6 +108,7 @@ public:
 	void ProcessVREvent( const vr::VREvent_t & event );
 	void RenderFrame();
 
+	void ResetRotation();
 	void SetupScene();
 	void AddCubeToScene( const glm::mat4 &mat, std::vector<float> &vertdata );
 	void AddCubeVertex( float fl0, float fl1, float fl2, float fl3, float fl4, std::vector<float> &vertdata );
@@ -543,7 +545,7 @@ bool CMainApplication::BInit()
 
 	XSelectInput(x_display, src_window_id, StructureNotifyMask);
 
-	if ( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_TIMER ) < 0 )
+	if ( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_JOYSTICK ) < 0 )
 	{
 		printf("%s - SDL could not initialize! SDL Error: %s\n", __FUNCTION__, SDL_GetError());
 		return false;
@@ -978,12 +980,20 @@ void CMainApplication::RunMainLoop()
 	SDL_StartTextInput();
 	SDL_ShowCursor( SDL_DISABLE );
 
+	SDL_Joystick *controller = SDL_JoystickOpen(0);
+	if (!controller)
+		fprintf(stderr, "Could not open gamecontroller: %s\n", SDL_GetError());
+
+
 	while ( !bQuit )
 	{
 		bQuit = HandleInput();
 
 		RenderFrame();
 	}
+
+	if (controller)
+		SDL_JoystickClose(controller);
 
 	SDL_StopTextInput();
 }
@@ -1067,6 +1077,14 @@ void CMainApplication::RenderFrame()
 	}
 
 	UpdateHMDMatrixPose();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: resets rotation & position of the screen
+//-----------------------------------------------------------------------------
+void CMainApplication::ResetRotation()
+{
+	m_bResetRotation = true;
 }
 
 
@@ -2200,13 +2218,23 @@ void CGLRenderModel::Draw()
 	glBindVertexArray( 0 );
 }
 
+CMainApplication *pMainApplication;
+
+void reset_position(int signum)
+{
+	printf("ok\n");
+	pMainApplication->ResetRotation();
+}
 
 //-----------------------------------------------------------------------------
 // Purpose:
 //-----------------------------------------------------------------------------
 int main(int argc, char *argv[])
 {
-	CMainApplication *pMainApplication = new CMainApplication( argc, argv );
+	pMainApplication = new CMainApplication( argc, argv );
+
+	signal(SIGUSR1, reset_position);
+	signal(SIGUSR2, reset_position);
 
 	if (!pMainApplication->BInit())
 	{

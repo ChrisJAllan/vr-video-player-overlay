@@ -14,7 +14,11 @@ If the video is not meant to be viewed as a sphere but as a rectangle, then pass
 If the video is flipped where the right eye is on the left side, then pass the `--right-left` option when running vr video player.\
 If the video is stretched, then pass the `--no-stretch`option when running vr video player. Note: This option only works when also using the `--flat` option.
 
-To rotate the video to be in front of you, pull the trigger on the vr controller or press `w` on your keyboard while the vr video player is focused.
+To rotate and move the video to be in front of you, pull the trigger on the vr controller or press `w` on your keyboard while the vr video player is focused. You can also use the select/back button on an xbox controller while the application is focused or send the SIGUSR1 signal to the application to do the same thing like using the following command:
+
+```
+killall -USR1 vr-video-player
+```
 
 # Games
 This vr video player can also be used to play games in VR to to get a 3D effect, and even for games that don't support VR.\
