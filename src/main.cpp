@@ -109,6 +109,9 @@ public:
 	void RenderFrame();
 
 	void ResetRotation();
+	void MoveCursor(float x, float y);
+	void MouseButton(int button, bool down);
+
 	void SetupScene();
 	void AddCubeToScene( const glm::mat4 &mat, std::vector<float> &vertdata );
 	void AddCubeVertex( float fl0, float fl1, float fl2, float fl3, float fl4, std::vector<float> &vertdata );
@@ -1099,6 +1102,46 @@ void CMainApplication::RenderFrame()
 void CMainApplication::ResetRotation()
 {
 	m_bResetRotation = true;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: simulates user mouse movement. Called when pointing a controller at
+// the window for example.
+//-----------------------------------------------------------------------------
+void CMainApplication::MoveCursor(float x, float y)
+{
+	int xi = (int)(x * window_width);
+	int yi = (int)(y * window_height);
+	XWarpPointer(x_display, None, src_window_id,
+		0, 0, 0, 0, xi, yi);
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: simulates user mouse clicking. Called when clicking a button on the
+// controller for example.
+//-----------------------------------------------------------------------------
+void CMainApplication::MouseButton(int button, bool down)
+{
+	Window root = DefaultRootWindow(x_display);
+
+	Window dummyW;
+	int dummyI;
+
+	XButtonEvent xbpe;
+	xbpe.window = src_window_id;
+	xbpe.button = button;
+	xbpe.display = x_display;
+	xbpe.root = root;
+	xbpe.same_screen = True;
+	xbpe.subwindow = None;
+	xbpe.time = CurrentTime;
+	xbpe.type = (down ? ButtonPress : ButtonRelease);
+
+	XQueryPointer(x_display, root, &dummyW, &dummyW,
+			&dummyI, &dummyI, &dummyI, &dummyI, &xbpe.state);
+
+	XSendEvent(x_display, src_window_id, True, ButtonPressMask, (XEvent *)&xbpe);
+	XFlush(x_display);
 }
 
 
