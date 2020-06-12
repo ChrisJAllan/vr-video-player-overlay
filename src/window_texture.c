@@ -55,7 +55,7 @@ int window_texture_on_resize(WindowTexture *self) {
 
     const int pixmap_config[] = {
         GLX_BIND_TO_TEXTURE_RGBA_EXT, True,
-        GLX_DRAWABLE_TYPE, GLX_PIXMAP_BIT,
+        GLX_DRAWABLE_TYPE, GLX_PIXMAP_BIT | GLX_WINDOW_BIT,
         GLX_BIND_TO_TEXTURE_TARGETS_EXT, GLX_TEXTURE_2D_BIT_EXT,
         /*GLX_BIND_TO_MIPMAP_TEXTURE_EXT, True,*/
         GLX_DOUBLEBUFFER, False,
@@ -76,11 +76,15 @@ int window_texture_on_resize(WindowTexture *self) {
     if(!configs)
         return 1;
 
+    XSync(self->display, 0);
+
     self->pixmap = XCompositeNameWindowPixmap(self->display, self->window);
     if(!self->pixmap) {
         result = 2;
         goto cleanup;
     }
+
+    XSync(self->display, 0);
 
     self->glx_pixmap = glXCreatePixmap(self->display, configs[0], self->pixmap, pixmap_attribs);
     if(!self->glx_pixmap) {
