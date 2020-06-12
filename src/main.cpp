@@ -243,6 +243,7 @@ private: // OpenGL bookkeeping
 	GLint m_nSceneMatrixLocation;
 	GLint m_nSceneTextureOffsetXLocation;
 	GLint m_nSceneTextureScaleXLocation;
+	GLint m_nCursorLocation;
 	GLint m_nControllerMatrixLocation;
 	GLint m_nRenderModelMatrixLocation;
 
@@ -276,6 +277,8 @@ private: // X compositor
 	Window src_window_id = None;
 	WindowTexture window_texture;
 
+	int mouse_x;
+	int mouse_y;
 	int window_width;
 	int window_height;
 	Uint32 window_resize_time;
@@ -412,6 +415,7 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	, m_nSceneMatrixLocation( -1 )
 	, m_nSceneTextureOffsetXLocation( -1 )
 	, m_nSceneTextureScaleXLocation( -1 )
+	, m_nCursorLocation( -1 )
 	, m_nControllerMatrixLocation( -1 )
 	, m_nRenderModelMatrixLocation( -1 )
 	, m_iTrackedControllerCount( 0 )
@@ -870,6 +874,12 @@ bool CMainApplication::HandleInput()
 		}
 	}
 
+	Window dummyW;
+	int dummyI;
+	unsigned int dummyU;
+	XQueryPointer(x_display, src_window_id, &dummyW, &dummyW,
+				&dummyI, &dummyI, &mouse_x, &mouse_y, &dummyU);
+
 	Uint32 time_now = SDL_GetTicks();
 	const int window_resize_timeout = 500; /* 0.5 seconds */
 	if(window_resized && time_now - window_resize_time >= window_resize_timeout) {
@@ -1160,14 +1170,17 @@ bool CMainApplication::CreateAllShaders()
 		"uniform mat4 matrix;\n"
 		"uniform float texture_offset_x;\n"
 		"uniform float texture_scale_x;\n"
+		"uniform vec2 cursor_location;\n"
 		"layout(location = 0) in vec4 position;\n"
 		"layout(location = 1) in vec2 v2UVcoordsIn;\n"
 		"layout(location = 2) in vec3 v3NormalIn;\n"
+		"out vec2 v2CursorLocation;\n"
 		"out vec2 v2UVcoords;\n"
 		"void main()\n"
 		"{\n"
 		"	v2UVcoords = vec2(1.0 - v2UVcoordsIn.x, v2UVcoordsIn.y) * vec2(texture_scale_x, 1.0) + vec2(texture_offset_x, 0.0);\n"
 		"   vec4 inverse_pos = vec4(position.x, position.y, -position.z, position.w);\n"
+		"	v2CursorLocation = cursor_location;\n"
 		"	gl_Position = matrix * inverse_pos;\n"
 		"}\n",
 
@@ -1175,10 +1188,12 @@ bool CMainApplication::CreateAllShaders()
 		"#version 410 core\n"
 		"uniform sampler2D mytexture;\n"
 		"in vec2 v2UVcoords;\n"
+		"in vec2 v2CursorLocation;\n"
 		"out vec4 outputColor;\n"
 		"void main()\n"
 		"{\n"
 		"	vec4 col = texture(mytexture, v2UVcoords);\n"
+		"	if (distance(v2CursorLocation, v2UVcoords) < 0.005) col = vec4(1, 1, 0, 1);\n"
 		"	outputColor = col.rgba;\n"
 		"}\n"
 		);
@@ -1198,6 +1213,12 @@ bool CMainApplication::CreateAllShaders()
 	if( m_nSceneTextureScaleXLocation == -1 )
 	{
 		dprintf( "Unable to find texture_scale_x uniform in scene shader\n" );
+		return false;
+	}
+	m_nCursorLocation = glGetUniformLocation( m_unSceneProgramID, "cursor_location" );
+	if( m_nCursorLocation == -1 )
+	{
+		dprintf( "Unable to find cursor_location uniform in scene shader\n" );
 		return false;
 	}
 
@@ -1818,6 +1839,12 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 
 	glUseProgram( m_unSceneProgramID );
 	glUniformMatrix4fv( m_nSceneMatrixLocation, 1, GL_FALSE, glm::value_ptr(GetCurrentViewProjectionMatrix( nEye )));
+
+	float m[2];
+	m[0] = mouse_x / (float)window_width;
+	m[1] = mouse_y / (float)window_height;
+
+	glUniform2fv(m_nCursorLocation, 1, &m[0]);
 
 	if( nEye == vr::Eye_Left )
 	{
