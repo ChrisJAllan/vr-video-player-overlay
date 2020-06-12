@@ -447,6 +447,10 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 			fprintf(stderr, "Invalid flag: %s\n", argv[i]);
 			usage();
 		} else {
+			if (strncmp(argv[i], "window:", 7) == 0) {
+				printf("window");
+				argv[i] += 7; // "window:".length
+			}
 			src_window_id = strtol(argv[i], nullptr, 0);
 		}
 	}
