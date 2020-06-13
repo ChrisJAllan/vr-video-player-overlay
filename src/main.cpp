@@ -296,10 +296,15 @@ private: // X compositor
 		PLANE
 	};
 
-	bool sphere_projection = true;
-	bool cylinder_projection = true;
+	enum class ProjectionMode {
+		SPHERE,
+		FLAT,
+		CYLINDER
+	};
+
+	ProjectionMode projection_mode = ProjectionMode::SPHERE;
 	double zoom = 0.0;
-	ViewMode view_mode = ViewMode::PLANE;
+	ViewMode view_mode = ViewMode::LEFT_RIGHT;
 	bool stretch = true;
 };
 
@@ -429,19 +434,47 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	, m_strPoseClasses("")
 	, m_bResetRotation( false )
 {
+	const char *projection_arg = nullptr;
+	const char *view_mode_arg = nullptr;
+
 	for(int i = 1; i < argc; ++i) {
 		if(strcmp(argv[i], "--flat") == 0) {
-			sphere_projection = false;
+			if(projection_arg) {
+				fprintf(stderr, "Error: --flat option can't be used together with the %s option\n", projection_arg);
+				exit(1);
+			}
+			projection_mode = ProjectionMode::FLAT;
+			projection_arg = argv[i];
 		} else if(strcmp(argv[i], "--zoom") == 0 && i < argc - 1) {
 			zoom = atof(argv[i + 1]);
 			++i;
 		} else if(strcmp(argv[i], "--left-right") == 0) {
+			if(view_mode_arg) {
+				fprintf(stderr, "Error: --left-right option can't be used together with the %s option\n", view_mode_arg);
+				exit(1);
+			}
 			view_mode = ViewMode::LEFT_RIGHT;
+			view_mode_arg = argv[i];
 		} else if(strcmp(argv[i], "--right-left") == 0) {
+			if(view_mode_arg) {
+				fprintf(stderr, "Error: --right-left option can't be used together with the %s option\n", view_mode_arg);
+				exit(1);
+			}
 			view_mode = ViewMode::RIGHT_LEFT;
+			view_mode_arg = argv[i];
 		} else if(strcmp(argv[i], "--plane") == 0) {
+			if(projection_arg) {
+				fprintf(stderr, "Error: --plane option can't be used together with the %s option\n", projection_arg);
+				exit(1);
+			}
+			if(view_mode_arg) {
+				fprintf(stderr, "Error: --plane option can't be used together with the %s option\n", view_mode_arg);
+				exit(1);
+			}
 			view_mode = ViewMode::PLANE;
-			cylinder_projection = true;
+			projection_mode = ProjectionMode::CYLINDER;
+			projection_arg = argv[i];
+			view_mode_arg = argv[i];
 		} else if(strcmp(argv[i], "--stretch") == 0) {
 			stretch = true;
 		} else if(strcmp(argv[i], "--no-stretch") == 0) {
@@ -463,7 +496,7 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 		usage();
 	}
 
-	if(!sphere_projection && fabs(zoom) <= 0.00001) {
+	if(projection_mode != ProjectionMode::SPHERE && fabs(zoom) <= 0.00001) {
 		zoom = 1.0;
 	}
 
@@ -920,6 +953,10 @@ bool CMainApplication::HandleInput()
 		hmd_pos = current_pos;
 		m_bResetRotation = false;
 		m_reset_rotation = glm::inverse(hmd_rot);
+	}
+
+	if(projection_mode == ProjectionMode::SPHERE) {
+		hmd_pos = current_pos;
 	}
 
 	vr::VRInputValueHandle_t ulHapticDevice;
@@ -1467,7 +1504,7 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 
 	double width_ratio = ((double)pixmap_texture_width * 0.5) / (double)pixmap_texture_height;
 
-	if(sphere_projection)
+	if(projection_mode == ProjectionMode::SPHERE)
 	{
 		long columns = 32;
 		long rows = 32;
@@ -1562,7 +1599,7 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 			}
 		}
 	}
-	else if (cylinder_projection)
+	else if (projection_mode == ProjectionMode::CYLINDER)
 	{
 		long columns = 64;
 		double angle_start = -0.8;
@@ -1595,7 +1632,7 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 			AddCubeVertex(x2, height / 2, zoom + y2, 1 - t2, 0, vertdata);
 			AddCubeVertex(x2, -height / 2, zoom + y2, 1 - t2, 1, vertdata);
 		}
-	} else {
+	} else if (projection_mode == ProjectionMode::FLAT) {
 		double width = (stretch ? 1.0 : 0.5) * width_ratio;
 		double height = 0.5;
 		AddCubeVertex(-width, 	 height, zoom, 1.0, 0.0, vertdata);
