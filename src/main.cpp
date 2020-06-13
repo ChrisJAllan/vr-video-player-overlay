@@ -436,6 +436,7 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 {
 	const char *projection_arg = nullptr;
 	const char *view_mode_arg = nullptr;
+	bool zoom_set = false;
 
 	for(int i = 1; i < argc; ++i) {
 		if(strcmp(argv[i], "--flat") == 0) {
@@ -448,6 +449,7 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 		} else if(strcmp(argv[i], "--zoom") == 0 && i < argc - 1) {
 			zoom = atof(argv[i + 1]);
 			++i;
+			zoom_set = true;
 		} else if(strcmp(argv[i], "--left-right") == 0) {
 			if(view_mode_arg) {
 				fprintf(stderr, "Error: --left-right option can't be used together with the %s option\n", view_mode_arg);
@@ -496,7 +498,7 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 		usage();
 	}
 
-	if(projection_mode != ProjectionMode::SPHERE && fabs(zoom) <= 0.00001) {
+	if(!zoom_set && projection_mode != ProjectionMode::SPHERE) {
 		zoom = 1.0;
 	}
 
@@ -1502,7 +1504,7 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 	glm::vec4 G = mat * glm::vec4( 1, 1, 1, 1 );
 	glm::vec4 H = mat * glm::vec4( 0, 1, 1, 1 );
 
-	double width_ratio = ((double)pixmap_texture_width * 0.5) / (double)pixmap_texture_height;
+	double width_ratio = (double)pixmap_texture_width / (double)pixmap_texture_height;
 
 	if(projection_mode == ProjectionMode::SPHERE)
 	{
@@ -1512,7 +1514,7 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 		double angle_y = 3.14;
 		double radius_depth = 1.0;
 		double radius_height = 0.5;
-		double radius = 0.5 * width_ratio;
+		double radius = radius_height * width_ratio * 0.5;
 
 		for(long row = 0; row < rows; ++row) {
 			for(long column = 0; column < columns; ++column) {
@@ -1604,8 +1606,8 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 		long columns = 64;
 		double angle_start = -0.8;
 		double angle_end = 0.8;
-		double radius = 4.5;
-		double height = radius;
+		double radius = 1.5 * width_ratio;
+		double height = 1.5;
 
 		double angle_len = angle_end - angle_start;
 
@@ -1614,9 +1616,9 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 			double t2 = (((double)column + 1) / (double)columns);
 
 			double x1 = sin(angle_start + t1 * angle_len) * radius;
-			double y1 = cos(angle_start + t1 * angle_len) * radius;
+			double y1 = cos(angle_start + t1 * angle_len) * radius * 0.5;
 			double x2 = sin(angle_start + t2 * angle_len) * radius;
-			double y2 = cos(angle_start + t2 * angle_len) * radius;
+			double y2 = cos(angle_start + t2 * angle_len) * radius * 0.5;
 
 			//     2     n
 			// 1  /|   / |    m
@@ -1624,17 +1626,17 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 			// |/  2     n/   |
 			// 1              m
 
-			AddCubeVertex(x1, height / 2, zoom + y1, 1 - t1, 0, vertdata);
-			AddCubeVertex(x2, height / 2, zoom + y2, 1 - t2, 0, vertdata);
-			AddCubeVertex(x1, -height / 2, zoom + y1, 1 - t1, 1, vertdata);
+			AddCubeVertex(x1, height, zoom + y1, 1 - t1, 0, vertdata);
+			AddCubeVertex(x2, height, zoom + y2, 1 - t2, 0, vertdata);
+			AddCubeVertex(x1, -height, zoom + y1, 1 - t1, 1, vertdata);
 
-			AddCubeVertex(x1, -height / 2, zoom + y1, 1 - t1, 1, vertdata);
-			AddCubeVertex(x2, height / 2, zoom + y2, 1 - t2, 0, vertdata);
-			AddCubeVertex(x2, -height / 2, zoom + y2, 1 - t2, 1, vertdata);
+			AddCubeVertex(x1, -height, zoom + y1, 1 - t1, 1, vertdata);
+			AddCubeVertex(x2, height, zoom + y2, 1 - t2, 0, vertdata);
+			AddCubeVertex(x2, -height, zoom + y2, 1 - t2, 1, vertdata);
 		}
 	} else if (projection_mode == ProjectionMode::FLAT) {
-		double width = (stretch ? 1.0 : 0.5) * width_ratio;
 		double height = 0.5;
+		double width = height * (stretch ? 1.0 : 0.5) * width_ratio;
 		AddCubeVertex(-width, 	 height, zoom, 1.0, 0.0, vertdata);
 		AddCubeVertex(width, 	 height, zoom, 0.0, 0.0, vertdata);
 		AddCubeVertex(-width, 	-height, zoom, 1.0, 1.0, vertdata);

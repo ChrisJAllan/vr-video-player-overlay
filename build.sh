@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/sh -e
 
 dependencies="glm glew sdl2 openvr x11 xcomposite"
 includes=$(pkg-config --cflags $dependencies)
