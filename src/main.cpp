@@ -59,6 +59,9 @@ extern "C" {
 #include <signal.h>
 #include <libgen.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "../dependencies/stb_image.h"
+
 #ifndef _countof
 #define _countof(x) (sizeof(x)/sizeof((x)[0]))
 #endif
@@ -250,6 +253,9 @@ private: // OpenGL bookkeeping
 	GLint m_nSceneTextureOffsetXLocation;
 	GLint m_nSceneTextureScaleXLocation;
 	GLint m_nCursorLocation;
+	GLint m_nArrowSizeLocation = -1;
+	GLint m_myTextureLocation = -1;
+	GLint m_arrowTextureLocation = -1;
 	GLint m_nControllerMatrixLocation;
 	GLint m_nRenderModelMatrixLocation;
 
@@ -307,8 +313,14 @@ private: // X compositor
 
 	ProjectionMode projection_mode = ProjectionMode::SPHERE;
 	double zoom = 0.0;
+	float cursor_scale = 1.0f;
 	ViewMode view_mode = ViewMode::LEFT_RIGHT;
 	bool stretch = true;
+
+	GLuint arrow_image_texture_id = 0;
+	stbi_uc *arrow_image_data = nullptr;
+	int arrow_image_width = 0;
+	int arrow_image_height = 0;
 };
 
 
@@ -453,6 +465,9 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 			zoom = atof(argv[i + 1]);
 			++i;
 			zoom_set = true;
+		/*} else if(strcmp(argv[i], "--cursor-scale") == 0 && i < argc - 1) {
+			cursor_scale = atof(argv[i + 1]);
+			++i;*/
 		} else if(strcmp(argv[i], "--left-right") == 0) {
 			if(view_mode_arg) {
 				fprintf(stderr, "Error: --left-right option can't be used together with the %s option\n", view_mode_arg);
@@ -507,36 +522,6 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 
 	printf("src window id: %ld, zoom: %f\n", src_window_id, zoom);
 
-#if 0
-	for( int i = 1; i < argc; i++ )
-	{
-		if( !strcmp( argv[i], "-gldebug" ) )
-		{
-			m_bDebugOpenGL = true;
-		}
-		else if( !strcmp( argv[i], "-verbose" ) )
-		{
-			m_bVerbose = true;
-		}
-		else if( !strcmp( argv[i], "-novblank" ) )
-		{
-			m_bVblank = false;
-		}
-		else if( !strcmp( argv[i], "-noglfinishhack" ) )
-		{
-			m_bGlFinishHack = false;
-		}
-		else if( !strcmp( argv[i], "-noprintf" ) )
-		{
-			g_bPrintf = false;
-		}
-		else if ( !strcmp( argv[i], "-cubevolume" ) && ( argc > i + 1 ) && ( *argv[ i + 1 ] != '-' ) )
-		{
-			m_iSceneVolumeInit = atoi( argv[ i + 1 ] );
-			i++;
-		}
-	}
-#endif
 	// other initialization tasks are done in BInit
 	memset(m_rDevClassChar, 0, sizeof(m_rDevClassChar));
 };
@@ -700,6 +685,23 @@ bool CMainApplication::BInit()
  
 // 		m_MillisecondsTimer.start(1, this);
 // 		m_SecondsTimer.start(1000, this);
+
+	char arrow_path[PATH_MAX];
+	realpath("images/arrow.png", arrow_path);
+	if(access(arrow_path, F_OK) == -1) {
+		strcpy(arrow_path, "/usr/share/vr-video-player/images/arrow.png");
+		if(access(arrow_path, F_OK) == -1) {
+			fprintf(stderr, "Unable to find arrow.png!\n");
+			exit(1);
+		}
+	}
+
+	int channels_in_file;
+	arrow_image_data = stbi_load(arrow_path, &arrow_image_width, &arrow_image_height, &channels_in_file, 0);
+	if(!arrow_image_data) {
+		fprintf(stderr, "Failed to load arrow.png!\n");
+		exit(1);
+	}
 	
 	if (!BInitGL())
 	{
@@ -779,6 +781,9 @@ bool CMainApplication::BInitGL()
 	if( !CreateAllShaders() )
 		return false;
 
+	glUseProgram( m_unSceneProgramID );
+
+	glActiveTexture(GL_TEXTURE1);
 	if(window_texture_init(&window_texture, x_display, src_window_id) != 0)
 		return false;
 
@@ -788,6 +793,37 @@ bool CMainApplication::BInitGL()
 	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &pixmap_texture_width);
 	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &pixmap_texture_height);
 	glBindTexture(GL_TEXTURE_2D, 0);
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	glActiveTexture(GL_TEXTURE1);
+	glGenTextures(1, &arrow_image_texture_id);
+    glBindTexture(GL_TEXTURE_2D, arrow_image_texture_id);
+    if(arrow_image_texture_id == 0)
+        return false;
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, arrow_image_width, arrow_image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, arrow_image_data);
+	stbi_image_free(arrow_image_data);
+	arrow_image_data = nullptr;
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+ 
+    float fLargest = 0.0f;
+    glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &fLargest);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, fLargest);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+	glUniform1i(m_myTextureLocation, 0);
+	glUniform1i(m_arrowTextureLocation, 1);
+	glActiveTexture(GL_TEXTURE0);
+	glUseProgram( 0);
 
 	glGenVertexArrays( 1, &m_unSceneVAO );
 	glGenBuffers( 1, &m_glSceneVertBuffer );
@@ -863,6 +899,8 @@ void CMainApplication::Shutdown()
 			glDeleteProgram( m_unCompanionWindowProgramID );
 		}
 
+		glDeleteTextures(1, &arrow_image_texture_id);
+
 		glDeleteRenderbuffers( 1, &leftEyeDesc.m_nDepthBufferId );
 		glDeleteTextures( 1, &leftEyeDesc.m_nRenderTextureId );
 		glDeleteFramebuffers( 1, &leftEyeDesc.m_nRenderFramebufferId );
@@ -889,6 +927,8 @@ void CMainApplication::Shutdown()
 		}
 	}
 
+	if(arrow_image_data)
+		stbi_image_free(arrow_image_data);
 	window_texture_deinit(&window_texture);
 
 	if( m_pCompanionWindow )
@@ -1279,30 +1319,36 @@ bool CMainApplication::CreateAllShaders()
 		"uniform float texture_offset_x;\n"
 		"uniform float texture_scale_x;\n"
 		"uniform vec2 cursor_location;\n"
+		"uniform vec2 arrow_size;\n"
 		"layout(location = 0) in vec4 position;\n"
 		"layout(location = 1) in vec2 v2UVcoordsIn;\n"
 		"layout(location = 2) in vec3 v3NormalIn;\n"
 		"out vec2 v2CursorLocation;\n"
+		"out vec2 arrow_size_frag;\n"
 		"out vec2 v2UVcoords;\n"
 		"void main()\n"
 		"{\n"
 		"	v2UVcoords = vec2(1.0 - v2UVcoordsIn.x, v2UVcoordsIn.y) * vec2(texture_scale_x, 1.0) + vec2(texture_offset_x, 0.0);\n"
 		"   vec4 inverse_pos = vec4(position.x, position.y, -position.z, position.w);\n"
 		"	v2CursorLocation = cursor_location;\n"
+		"	arrow_size_frag = arrow_size;\n"
 		"	gl_Position = matrix * inverse_pos;\n"
 		"}\n",
 
 		// Fragment Shader
 		"#version 410 core\n"
 		"uniform sampler2D mytexture;\n"
+		"uniform sampler2D arrow_texture;\n"
 		"in vec2 v2UVcoords;\n"
 		"in vec2 v2CursorLocation;\n"
+		"in vec2 arrow_size_frag;\n"
 		"out vec4 outputColor;\n"
 		"void main()\n"
 		"{\n"
+		"	vec2 cursor_diff = (v2CursorLocation + arrow_size_frag) - v2UVcoords;\n"
+		"	vec4 arrow_col = texture(arrow_texture, (arrow_size_frag - cursor_diff) / arrow_size_frag);\n"
 		"	vec4 col = texture(mytexture, v2UVcoords);\n"
-		"	if (distance(v2CursorLocation, v2UVcoords) < 0.005) col = vec4(1, 1, 0, 1);\n"
-		"	outputColor = col.rgba;\n"
+		"	outputColor = mix(col, arrow_col, arrow_col.a);\n"
 		"}\n"
 		);
 	m_nSceneMatrixLocation = glGetUniformLocation( m_unSceneProgramID, "matrix" );
@@ -1327,6 +1373,22 @@ bool CMainApplication::CreateAllShaders()
 	if( m_nCursorLocation == -1 )
 	{
 		dprintf( "Unable to find cursor_location uniform in scene shader\n" );
+		return false;
+	}
+	m_nArrowSizeLocation = glGetUniformLocation( m_unSceneProgramID, "arrow_size" );
+	if( m_nArrowSizeLocation == -1 )
+	{
+		dprintf( "Unable to find arrow_size uniform in scene shader\n" );
+		return false;
+	}
+	m_myTextureLocation = glGetUniformLocation(m_unSceneProgramID, "mytexture");
+	if(m_myTextureLocation == -1) {
+		dprintf( "Unable to find mytexture uniform in scene shader\n" );
+		return false;
+	}
+	m_arrowTextureLocation = glGetUniformLocation(m_unSceneProgramID, "arrow_texture");
+	if(m_arrowTextureLocation == -1) {
+		dprintf( "Unable to find arrow_texture uniform in scene shader\n" );
 		return false;
 	}
 
@@ -1527,6 +1589,7 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 	glm::vec4 H = mat * glm::vec4( 0, 1, 1, 1 );
 
 	double width_ratio = (double)pixmap_texture_width / (double)pixmap_texture_height;
+	double arrow_ratio = width_ratio;
 
 	if(projection_mode == ProjectionMode::SPHERE)
 	{
@@ -1666,7 +1729,18 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 		AddCubeVertex(-width, 	-height, zoom, 1.0, 1.0, vertdata);
 		AddCubeVertex(width, 	-height, zoom, 0.0, 1.0, vertdata);
 		AddCubeVertex(width, 	 height, zoom, 0.0, 0.0, vertdata);
+
+		if(stretch)
+			arrow_ratio = width_ratio * 2.0;
 	}
+
+	float v[2];
+	v[0] = 0.01 * cursor_scale;
+	v[1] = v[0] * arrow_ratio * ((float)arrow_image_height / (float)arrow_image_width);
+
+	glUseProgram( m_unSceneProgramID );
+	glUniform2fv(m_nArrowSizeLocation, 1, &v[0]);
+	glUseProgram( 0 );
 }
 
 
@@ -1949,10 +2023,17 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 	glUniformMatrix4fv( m_nSceneMatrixLocation, 1, GL_FALSE, glm::value_ptr(GetCurrentViewProjectionMatrix( nEye )));
 
 	float m[2];
-	m[0] = mouse_x / (float)window_width;
-	m[1] = mouse_y / (float)window_height;
+	// -10 offset is the distance between the edge of the arrow.png image to the arrow itself
+	m[0] = (mouse_x - 10) / (float)window_width;
+	m[1] = (mouse_y - 10) / (float)window_height;
 
-	glUniform2fv(m_nCursorLocation, 1, &m[0]);
+	if(view_mode != ViewMode::PLANE && m[0] > 0.5f)
+		m[0] -= 0.5f;
+	/*
+	// TODO: Set this as an option?
+	if(view_mode != ViewMode::PLANE)
+		m[0] *= 0.5f;
+	*/
 
 	if( nEye == vr::Eye_Left )
 	{
@@ -1966,6 +2047,9 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 		}
 		glUniform1fv(m_nSceneTextureOffsetXLocation, 1, &offset);
 		glUniform1fv(m_nSceneTextureScaleXLocation, 1, &scale);
+
+		if(view_mode == ViewMode::RIGHT_LEFT)
+			m[0] += offset;
 	}
 	else if( nEye == vr::Eye_Right )
 	{
@@ -1979,12 +2063,22 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 		}
 		glUniform1fv(m_nSceneTextureOffsetXLocation, 1, &offset);
 		glUniform1fv(m_nSceneTextureScaleXLocation, 1, &scale);
+
+		if(view_mode == ViewMode::LEFT_RIGHT)
+			m[0] += offset;
 	}
 
+	glUniform2fv(m_nCursorLocation, 1, &m[0]);
+
 	glBindVertexArray( m_unSceneVAO );
+	glActiveTexture(GL_TEXTURE0);
 	glBindTexture( GL_TEXTURE_2D, window_texture_get_opengl_texture_id(&window_texture) );
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, arrow_image_texture_id);
 	glDrawArrays( GL_TRIANGLES, 0, m_uiVertcount );
 	glBindVertexArray( 0 );
+
+	glActiveTexture(GL_TEXTURE0);
 #if 0
 	bool bIsInputAvailable = m_pHMD->IsInputAvailable();
 
