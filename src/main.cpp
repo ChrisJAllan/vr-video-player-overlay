@@ -319,6 +319,8 @@ private: // X compositor
 	stbi_uc *arrow_image_data = nullptr;
 	int arrow_image_width = 0;
 	int arrow_image_height = 0;
+
+	float cursor_scale_uniform[2];
 };
 
 
@@ -408,7 +410,7 @@ void dprintf( const char *fmt, ... )
 }
 
 static void usage() {
-	fprintf(stderr, "usage: vr-video-player [--flat] [--left-right|--right-left|--plane] [--stretch|--no-stretch] [--zoom zoom-level] <window_id>\n");
+	fprintf(stderr, "usage: vr-video-player [--flat] [--left-right|--right-left|--plane] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] <window_id>\n");
 	exit(1);
 }
 
@@ -450,6 +452,7 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	const char *projection_arg = nullptr;
 	const char *view_mode_arg = nullptr;
 	bool zoom_set = false;
+	bool cursor_scale_set = false;
 
 	for(int i = 1; i < argc; ++i) {
 		if(strcmp(argv[i], "--flat") == 0) {
@@ -463,9 +466,10 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 			zoom = atof(argv[i + 1]);
 			++i;
 			zoom_set = true;
-		/*} else if(strcmp(argv[i], "--cursor-scale") == 0 && i < argc - 1) {
+		} else if(strcmp(argv[i], "--cursor-scale") == 0 && i < argc - 1) {
 			cursor_scale = atof(argv[i + 1]);
-			++i;*/
+			++i;
+			cursor_scale_set = true;
 		} else if(strcmp(argv[i], "--left-right") == 0) {
 			if(view_mode_arg) {
 				fprintf(stderr, "Error: --left-right option can't be used together with the %s option\n", view_mode_arg);
@@ -518,10 +522,17 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 		zoom = 1.0;
 	}
 
+	if(cursor_scale < 0.01f || (!cursor_scale_set && projection_mode == ProjectionMode::SPHERE)) {
+		cursor_scale = 0.01f;
+	}
+
 	printf("src window id: %ld, zoom: %f\n", src_window_id, zoom);
 
 	// other initialization tasks are done in BInit
 	memset(m_rDevClassChar, 0, sizeof(m_rDevClassChar));
+
+	cursor_scale_uniform[0] = 0.0f;
+	cursor_scale_uniform[1] = 0.0f;
 };
 
 
@@ -1337,6 +1348,7 @@ bool CMainApplication::CreateAllShaders()
 		"	vec2 cursor_diff = (v2CursorLocation + arrow_size_frag) - v2UVcoords;\n"
 		"	vec4 arrow_col = texture(arrow_texture, (arrow_size_frag - cursor_diff) / arrow_size_frag);\n"
 		"	vec4 col = texture(mytexture, v2UVcoords);\n"
+		"	if(arrow_size_frag.x < 0.001 || arrow_size_frag.y < 0.001) arrow_col.a = 0.0;\n"
 		"	outputColor = mix(col, arrow_col, arrow_col.a);\n"
 		"}\n"
 		);
@@ -1723,12 +1735,11 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 			arrow_ratio = width_ratio * 2.0;
 	}
 
-	float v[2];
-	v[0] = 0.01 * cursor_scale;
-	v[1] = v[0] * arrow_ratio * ((float)arrow_image_height / (float)arrow_image_width);
+	cursor_scale_uniform[0] = 0.01 * cursor_scale;
+	cursor_scale_uniform[1] = cursor_scale_uniform[0] * arrow_ratio * ((float)arrow_image_height / (float)arrow_image_width);
 
 	glUseProgram( m_unSceneProgramID );
-	glUniform2fv(m_nArrowSizeLocation, 1, &v[0]);
+	glUniform2fv(m_nArrowSizeLocation, 1, &cursor_scale_uniform[0]);
 	glUseProgram( 0 );
 }
 
@@ -2013,10 +2024,10 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 
 	float m[2];
 	// -10 offset is the distance between the edge of the arrow.png image to the arrow itself
-	m[0] = (mouse_x - 10) / (float)window_width;
-	m[1] = (mouse_y - 10) / (float)window_height;
+	m[0] = mouse_x / (float)window_width;
+	m[1] = mouse_y / (float)window_height;
 
-	if(view_mode != ViewMode::PLANE && m[0] > 0.5f)
+	if(view_mode != ViewMode::PLANE && m[0] >= 0.5f)
 		m[0] -= 0.5f;
 	/*
 	// TODO: Set this as an option?
@@ -2056,6 +2067,16 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 		if(view_mode == ViewMode::LEFT_RIGHT)
 			m[0] += offset;
 	}
+
+
+	float drawn_arrow_width = cursor_scale_uniform[0] * window_width;
+	float drawn_arrow_height = cursor_scale_uniform[1] * window_height;
+	float arrow_drawn_scale_x = drawn_arrow_width / (float)arrow_image_width;
+	float arrow_drawn_scale_y = drawn_arrow_height / (float)arrow_image_height;
+
+	int cursor_offset = -10;
+	m[0] += (cursor_offset * arrow_drawn_scale_x) / (float)window_width;
+	m[1] += (cursor_offset * arrow_drawn_scale_y) / (float)window_height;
 
 	glUniform2fv(m_nCursorLocation, 1, &m[0]);
 

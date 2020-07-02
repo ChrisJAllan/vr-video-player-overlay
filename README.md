@@ -15,6 +15,8 @@ If the video is not meant to be viewed as a sphere but as a rectangle, then pass
 If the video is flipped where the right eye is on the left side, then pass the `--right-left` option when running vr video player.\
 If the video is stretched, then pass the `--no-stretch` option when running vr video player. Note: This option only works when also using the `--flat` option.
 
+Use the `--cursor-scale` option to change the scale of the cursor. By default the scale is 1.0, except in sphere mode where it's 0.0. Set the scale to 0 to hide the cursor.
+
 To rotate and move the video to be in front of you, pull the trigger on the vr controller or press `w` on your keyboard while the vr video player is focused. You can also use the select/back button on an xbox controller while the application is focused or send the SIGUSR1 signal to the application to do the same thing like using the following command:
 
 ```
