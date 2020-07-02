@@ -46,6 +46,9 @@ extern "C" {
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <X11/Xlib.h>
+#include <X11/Xproto.h>
+#include <GL/glxproto.h>
 
 #include <stdio.h>
 #include <string>
@@ -566,6 +569,23 @@ std::string GetTrackedDeviceString( vr::TrackedDeviceIndex_t unDevice, vr::Track
 	return sResult;
 }
 
+static int xerror(Display *dpy, XErrorEvent *ee) {
+    if (ee->error_code == BadWindow
+    || (ee->request_code == X_SetInputFocus && ee->error_code == BadMatch)
+    || (ee->request_code == X_PolyText8 && ee->error_code == BadDrawable)
+    || (ee->request_code == X_PolyFillRectangle && ee->error_code == BadDrawable)
+    || (ee->request_code == X_PolySegment && ee->error_code == BadDrawable)
+    || (ee->request_code == X_ConfigureWindow && ee->error_code == BadMatch)
+    || (ee->request_code == X_GrabButton && ee->error_code == BadAccess)
+    || (ee->request_code == X_GrabKey && ee->error_code == BadAccess)
+    || (ee->request_code == X_CopyArea && ee->error_code == BadDrawable)
+    || (ee->request_code == X_GLXCreatePixmap && ee->error_code == BadMatch))
+        return 0;
+    fprintf(stderr, "vrwm: fatal error: request code=%d, error code=%d\n",
+        ee->request_code, ee->error_code);
+    return 0; /* may call exit */ /* TODO: xerrorxlib(dpy, ee); */
+}
+
 
 //-----------------------------------------------------------------------------
 // Purpose:
@@ -578,6 +598,8 @@ bool CMainApplication::BInit()
 		printf("Failed to open x display\n");
 		return false;
 	}
+
+	XSetErrorHandler(xerror);
 
 	XWindowAttributes xwa;
 	if(!XGetWindowAttributes(x_display, src_window_id, &xwa)) {
