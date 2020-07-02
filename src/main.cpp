@@ -152,8 +152,6 @@ private:
 	bool m_bGlFinishHack;
 
 	vr::IVRSystem *m_pHMD;
-	std::string m_strDriver;
-	std::string m_strDisplay;
 	vr::TrackedDevicePose_t m_rTrackedDevicePose[ vr::k_unMaxTrackedDeviceCount ];
 	glm::mat4 m_rmat4DevicePose[ vr::k_unMaxTrackedDeviceCount ];
 	
@@ -632,7 +630,7 @@ bool CMainApplication::BInit()
 	if( m_bDebugOpenGL )
 		SDL_GL_SetAttribute( SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG );
 
-	m_pCompanionWindow = SDL_CreateWindow( "hellovr", nWindowPosX, nWindowPosY, m_nCompanionWindowWidth, m_nCompanionWindowHeight, unWindowFlags );
+	m_pCompanionWindow = SDL_CreateWindow( "vr-video-player", nWindowPosX, nWindowPosY, m_nCompanionWindowWidth, m_nCompanionWindowHeight, unWindowFlags );
 	if (m_pCompanionWindow == NULL)
 	{
 		printf( "%s - Window could not be created! SDL Error: %s\n", __FUNCTION__, SDL_GetError() );
@@ -661,15 +659,6 @@ bool CMainApplication::BInit()
 		return false;
 	}
 
-	m_strDriver = "No Driver";
-	m_strDisplay = "No Display";
-
-	m_strDriver = GetTrackedDeviceString( vr::k_unTrackedDeviceIndex_Hmd, vr::Prop_TrackingSystemName_String );
-	m_strDisplay = GetTrackedDeviceString( vr::k_unTrackedDeviceIndex_Hmd, vr::Prop_SerialNumber_String );
-
-	std::string strWindowTitle = "hellovr - " + m_strDriver + " " + m_strDisplay;
-	SDL_SetWindowTitle( m_pCompanionWindow, strWindowTitle.c_str() );
-	
 	// cube array
  	m_iSceneVolumeWidth = m_iSceneVolumeInit;
  	m_iSceneVolumeHeight = m_iSceneVolumeInit;
