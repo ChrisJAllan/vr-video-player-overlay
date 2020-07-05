@@ -1,5 +1,6 @@
 #include "../include/window_texture.h"
 #include <X11/extensions/Xcomposite.h>
+#include <stdio.h>
 
 static int x11_supports_composite_named_window_pixmap(Display *display) {
     int extension_major;
@@ -45,6 +46,7 @@ static void window_texture_cleanup(WindowTexture *self) {
 }
 
 void window_texture_deinit(WindowTexture *self) {
+    XCompositeUnredirectWindow(self->display, self->window, CompositeRedirectAutomatic);
     window_texture_cleanup(self);
 }
 
@@ -71,12 +73,41 @@ int window_texture_on_resize(WindowTexture *self) {
         None
     };
 
+    XWindowAttributes attr;
+    if (!XGetWindowAttributes(self->display, self->window, &attr)) {
+        fprintf(stderr, "Failed to get window attributes\n");
+        return 1;
+    }
+
     int c;
     GLXFBConfig *configs = glXChooseFBConfig(self->display, 0, pixmap_config, &c);
-    if(!configs)
+    if(!configs) {
+        fprintf(stderr, "Failed to choose fb config\n");
         return 1;
+    }
 
-    XSync(self->display, 0);
+    int found = 0;
+    GLXFBConfig config;
+    for (int i = 0; i < c; i++) {
+        config = configs[i];
+        XVisualInfo *visual = glXGetVisualFromFBConfig(self->display, config);
+        if (!visual)
+            continue;
+
+        if (attr.depth != visual->depth) {
+            XFree(visual);
+            continue;
+        }
+        XFree(visual);
+        found = 1;
+        break;
+    }
+
+    if(!found) {
+        fprintf(stderr, "No matching fb config found\n");
+        result = 1;
+        goto cleanup;
+    }
 
     self->pixmap = XCompositeNameWindowPixmap(self->display, self->window);
     if(!self->pixmap) {
@@ -84,9 +115,7 @@ int window_texture_on_resize(WindowTexture *self) {
         goto cleanup;
     }
 
-    XSync(self->display, 0);
-
-    self->glx_pixmap = glXCreatePixmap(self->display, configs[0], self->pixmap, pixmap_attribs);
+    self->glx_pixmap = glXCreatePixmap(self->display, config, self->pixmap, pixmap_attribs);
     if(!self->glx_pixmap) {
         result = 3;
         goto cleanup;
