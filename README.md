@@ -6,21 +6,43 @@ the video as a regular video in vr without depth (like a cinema).
 
 # Building
 vr video player can be built by running `./build.sh` or by using [sibs](https://github.com/DEC05EBA/sibs) or if you are running Arch Linux, then you can find it on aur under the name vr-video-player-git (`yay -S vr-video-player-git`).
+Dependencies required: `glm, glew, sdl2, openvr and x11`.
 
 # How to use
-Start a video in your video player of choice (tested with mpv) and then get the x11 window id (this can be done with xwininfo) and then fullscreen the video (for best quality).
-Then launch `vr_video_player` with the x11 window id.
+Install xdotool and launch a video in a video player (I recommend mpv) and fullscreen it or resize it to fit your monitor for best quality and then,
 
-If the video is not meant to be viewed as a sphere but as a rectangle, then pass the `--flat` option when running vr video player.\
-If the video is flipped where the right eye is on the left side, then pass the `--right-left` option when running vr video player.\
-If the video is stretched, then pass the `--no-stretch` option when running vr video player. Note: This option only works when also using the `--flat` option.
-
-Use the `--cursor-scale` option to change the scale of the cursor. By default the scale is 1.0, except in sphere mode where it's 0.0. Set the scale to 0 to hide the cursor.
-
-To rotate and move the video to be in front of you, pull the trigger on the vr controller or press `w` on your keyboard while the vr video player is focused. You can also use the select/back button on an xbox controller while the application is focused or send the SIGUSR1 signal to the application to do the same thing like using the following command:
-
+if you want to watch 180 degree stereoscopic videos then run:
 ```
-killall -USR1 vr-video-player
+./vr-video-player $(xdotool selectwindow)
+```
+and click on your video player.
+
+if you want to watch side-by-side stereoscopic videos or games (flat) then run:
+```
+./vr-video-player --flat $(xdotool selectwindow)`
+```
+and click on your video player.
+
+if the side-by-side video is mirrored so that the left side is on the right side of the video, then run:
+```
+./vr-video-player --flat --right-left $(xdotool selectwindow)
+```
+and click on your video player.
+
+if you want to watch a regular non-stereoscopic video, then run:
+```
+./vr-video-player --plane $(xdotool selectwindow)
+```
+and click on your video player.
+
+The video might not be in front of you, so to move the video in front of you, you can pull the trigger on the vr controller or press the "W" key while the vr-video-player is focused or press the select/back button on an xbox controller while the application is focused. You can also send the SIGUSR1 signal to the application, using the following command:
+```
+killall -USR1 vr-video-player`
+```
+
+You can launch vr-video-player without any arguments to show a list of all arguments:
+```
+usage: vr-video-player [--flat] [--left-right|--right-left|--plane] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] <window_id>
 ```
 
 # Games
