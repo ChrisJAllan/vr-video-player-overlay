@@ -42,8 +42,16 @@ killall -USR1 vr-video-player`
 
 You can launch vr-video-player without any arguments to show a list of all arguments:
 ```
-usage: vr-video-player [--flat] [--left-right|--right-left|--plane] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] <window_id>
+usage: vr-video-player [--flat] [--left-right|--right-left|--plane] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] [--cursor-wrap|--no-cursor-wrap] <window_id>
 ```
+
+Note: If the cursor position is weird and does not match what you are seeing in stereoscopic vr mode, then try running the vr video player with the --cursor-wrap option:
+
+--cursor-wrap and --no-cursor-wrap changes the behavior of the cursor in steroscopic mode. Usually in games the game view is mirrored but the cursor is not and the center of the
+game which is normally at the center moves to 1/4 and 3/4 of the window. With --cursor-wrap, the cursor position in VR will match the real position of the
+cursor relative to the window and with --no-cursor-wrap the cursor will match the position of the cursor as the game sees it.
+
+Note: --cursor-scale is set to 0 by default in 180 degrees stereoscopic mode and --no-cursor-wrap is set by default in --flat mode.
 
 # Games
 This vr video player can also be used to play games in VR to to get a 3D effect, and even for games that don't support VR.\

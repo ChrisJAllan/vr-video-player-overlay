@@ -314,6 +314,7 @@ private: // X compositor
 	float cursor_scale = 1.0f;
 	ViewMode view_mode = ViewMode::LEFT_RIGHT;
 	bool stretch = true;
+	bool cursor_wrap = true;
 
 	GLuint arrow_image_texture_id = 0;
 	stbi_uc *arrow_image_data = nullptr;
@@ -410,7 +411,7 @@ void dprintf( const char *fmt, ... )
 }
 
 static void usage() {
-	fprintf(stderr, "usage: vr-video-player [--flat] [--left-right|--right-left|--plane] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] <window_id>\n");
+	fprintf(stderr, "usage: vr-video-player [--flat] [--left-right|--right-left|--plane] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] [--cursor-wrap|--no-cursor-wrap] <window_id>\n");
 	exit(1);
 }
 
@@ -453,6 +454,7 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	const char *view_mode_arg = nullptr;
 	bool zoom_set = false;
 	bool cursor_scale_set = false;
+	bool cursor_wrap_set = false;
 
 	for(int i = 1; i < argc; ++i) {
 		if(strcmp(argv[i], "--flat") == 0) {
@@ -501,12 +503,17 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 			stretch = true;
 		} else if(strcmp(argv[i], "--no-stretch") == 0) {
 			stretch = false;
+		} else if(strcmp(argv[i], "--cursor-wrap") == 0) {
+			cursor_wrap = true;
+			cursor_wrap_set = true;
+		} else if(strcmp(argv[i], "--no-cursor-wrap") == 0) {
+			cursor_wrap = false;
+			cursor_wrap_set = true;
 		} else if(argv[i][0] == '-') {
 			fprintf(stderr, "Invalid flag: %s\n", argv[i]);
 			usage();
 		} else {
 			if (strncmp(argv[i], "window:", 7) == 0) {
-				printf("window");
 				argv[i] += 7; // "window:".length
 			}
 			src_window_id = strtol(argv[i], nullptr, 0);
@@ -524,6 +531,10 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 
 	if(cursor_scale < 0.01f || (!cursor_scale_set && projection_mode == ProjectionMode::SPHERE)) {
 		cursor_scale = 0.01f;
+	}
+
+	if(!cursor_wrap_set && projection_mode == ProjectionMode::FLAT) {
+		cursor_wrap = false;
 	}
 
 	printf("src window id: %ld, zoom: %f\n", src_window_id, zoom);
@@ -2027,13 +2038,12 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 	m[0] = mouse_x / (float)window_width;
 	m[1] = mouse_y / (float)window_height;
 
-	if(view_mode != ViewMode::PLANE && m[0] >= 0.5f)
-		m[0] -= 0.5f;
-	/*
-	// TODO: Set this as an option?
-	if(view_mode != ViewMode::PLANE)
-		m[0] *= 0.5f;
-	*/
+	if(view_mode != ViewMode::PLANE) {
+		if(cursor_wrap && m[0] >= 0.5f)
+			m[0] -= 0.5f;
+		else if(!cursor_wrap)
+			m[0] *= 0.5f;
+	}
 
 	if( nEye == vr::Eye_Left )
 	{
