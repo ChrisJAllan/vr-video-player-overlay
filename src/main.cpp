@@ -1007,26 +1007,20 @@ bool CMainApplication::HandleInput()
 				zoom -= 0.01f;
 				window_resized = true;
 
-				std::ofstream zoomstate;
 				std::stringstream strstr;
-				strstr << "/tmp/vr-video-player_" << src_window_id << ".txt";
-				std::string s = strstr.str();
+				strstr << "/tmp/vr-video-player_" << src_window_id;
+				std::ofstream zoomstate(strstr.str());
 				zoomstate << zoom;
-				zoomstate.close();
 			}
 			if( sdlEvent.key.keysym.sym == SDLK_e )
 			{
 				zoom += 0.01f;
 				window_resized = true;
 
-				std::ofstream zoomstate;
 				std::stringstream strstr;
-				strstr << "/tmp/vr-video-player_" << src_window_id << ".txt";
-				std::string s = strstr.str();
-				zoomstate.open (s);
-
+				strstr << "/tmp/vr-video-player_" << src_window_id;
+				std::ofstream zoomstate(strstr.str());
 				zoomstate << zoom;
-				zoomstate.close();
 			}
 		}
 	}
