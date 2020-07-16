@@ -1595,9 +1595,9 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 			double t2 = (((double)column + 1) / (double)columns);
 
 			double x1 = sin(angle_start + t1 * angle_len) * radius;
-			double y1 = cos(angle_start + t1 * angle_len) * radius * 0.75;
+			double y1 = cos(angle_start + t1 * angle_len) * radius * 0.6;
 			double x2 = sin(angle_start + t2 * angle_len) * radius;
-			double y2 = cos(angle_start + t2 * angle_len) * radius * 0.75;
+			double y2 = cos(angle_start + t2 * angle_len) * radius * 0.6;
 
 			//     2     n
 			// 1  /|   / |    m
