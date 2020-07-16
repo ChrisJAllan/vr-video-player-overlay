@@ -126,8 +126,6 @@ public:
 	void AddCubeToScene( const glm::mat4 &mat, std::vector<float> &vertdata );
 	void AddCubeVertex( float fl0, float fl1, float fl2, float fl3, float fl4, std::vector<float> &vertdata );
 
-	void RenderControllerAxes();
-
 	bool SetupStereoRenderTargets();
 	void SetupCompanionWindow();
 	void SetupCameras();
@@ -158,24 +156,6 @@ private:
 	vr::IVRSystem *m_pHMD;
 	vr::TrackedDevicePose_t m_rTrackedDevicePose[ vr::k_unMaxTrackedDeviceCount ];
 	glm::mat4 m_rmat4DevicePose[ vr::k_unMaxTrackedDeviceCount ];
-	
-	struct ControllerInfo_t
-	{
-		vr::VRInputValueHandle_t m_source = vr::k_ulInvalidInputValueHandle;
-		vr::VRActionHandle_t m_actionPose = vr::k_ulInvalidActionHandle;
-		vr::VRActionHandle_t m_actionHaptic = vr::k_ulInvalidActionHandle;
-		glm::mat4 m_rmat4Pose;
-		CGLRenderModel *m_pRenderModel = nullptr;
-		std::string m_sRenderModelName;
-		bool m_bShowController;
-	};
-
-	enum EHand
-	{
-		Left = 0,
-		Right = 1,
-	};
-	ControllerInfo_t m_rHand[2];
 
 private: // SDL bookkeeping
 	SDL_Window *m_pCompanionWindow;
@@ -248,8 +228,6 @@ private: // OpenGL bookkeeping
 
 	GLuint m_unSceneProgramID;
 	GLuint m_unCompanionWindowProgramID;
-	GLuint m_unControllerTransformProgramID;
-	GLuint m_unRenderModelProgramID;
 
 	GLint m_nSceneMatrixLocation;
 	GLint m_nSceneTextureOffsetXLocation;
@@ -258,8 +236,6 @@ private: // OpenGL bookkeeping
 	GLint m_nArrowSizeLocation = -1;
 	GLint m_myTextureLocation = -1;
 	GLint m_arrowTextureLocation = -1;
-	GLint m_nControllerMatrixLocation;
-	GLint m_nRenderModelMatrixLocation;
 
 	struct FramebufferDesc
 	{
@@ -276,8 +252,6 @@ private: // OpenGL bookkeeping
 	
 	uint32_t m_nRenderWidth;
 	uint32_t m_nRenderHeight;
-
-	std::vector< CGLRenderModel * > m_vecRenderModels;
 
 	vr::VRActionHandle_t m_actionHideCubes = vr::k_ulInvalidActionHandle;
 	vr::VRActionHandle_t m_actionHideThisController = vr::k_ulInvalidActionHandle;
@@ -442,8 +416,6 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	, m_nCompanionWindowHeight( 600 )
 	, m_unSceneProgramID( 0 )
 	, m_unCompanionWindowProgramID( 0 )
-	, m_unControllerTransformProgramID( 0 )
-	, m_unRenderModelProgramID( 0 )
 	, m_pHMD( NULL )
 	, m_bDebugOpenGL( false )
 	, m_bVerbose( false )
@@ -457,8 +429,6 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	, m_nSceneTextureOffsetXLocation( -1 )
 	, m_nSceneTextureScaleXLocation( -1 )
 	, m_nCursorLocation( -1 )
-	, m_nControllerMatrixLocation( -1 )
-	, m_nRenderModelMatrixLocation( -1 )
 	, m_iTrackedControllerCount( 0 )
 	, m_iTrackedControllerCount_Last( -1 )
 	, m_iValidPoseCount( 0 )
@@ -779,14 +749,6 @@ bool CMainApplication::BInit()
 
 	vr::VRInput()->GetActionSetHandle( "/actions/demo", &m_actionsetDemo );
 
-	vr::VRInput()->GetActionHandle( "/actions/demo/out/Haptic_Left", &m_rHand[Left].m_actionHaptic );
-	vr::VRInput()->GetInputSourceHandle( "/user/hand/left", &m_rHand[Left].m_source );
-	vr::VRInput()->GetActionHandle( "/actions/demo/in/Hand_Left", &m_rHand[Left].m_actionPose );
-
-	vr::VRInput()->GetActionHandle( "/actions/demo/out/Haptic_Right", &m_rHand[Right].m_actionHaptic );
-	vr::VRInput()->GetInputSourceHandle( "/user/hand/right", &m_rHand[Right].m_source );
-	vr::VRInput()->GetActionHandle( "/actions/demo/in/Hand_Right", &m_rHand[Right].m_actionPose );
-
 	return true;
 }
 
@@ -904,12 +866,6 @@ void CMainApplication::Shutdown()
 		vr::VR_Shutdown();
 		m_pHMD = NULL;
 	}
-
-	for( std::vector< CGLRenderModel * >::iterator i = m_vecRenderModels.begin(); i != m_vecRenderModels.end(); i++ )
-	{
-		delete (*i);
-	}
-	m_vecRenderModels.clear();
 	
 	if( m_pContext )
 	{
@@ -923,14 +879,6 @@ void CMainApplication::Shutdown()
 		if ( m_unSceneProgramID )
 		{
 			glDeleteProgram( m_unSceneProgramID );
-		}
-		if ( m_unControllerTransformProgramID )
-		{
-			glDeleteProgram( m_unControllerTransformProgramID );
-		}
-		if ( m_unRenderModelProgramID )
-		{
-			glDeleteProgram( m_unRenderModelProgramID );
 		}
 		if ( m_unCompanionWindowProgramID )
 		{
@@ -1089,66 +1037,11 @@ bool CMainApplication::HandleInput()
 		hmd_pos = current_pos;
 	}
 
-	vr::VRInputValueHandle_t ulHapticDevice;
-	if ( GetDigitalActionRisingEdge( m_actionTriggerHaptic, &ulHapticDevice ) )
-	{
-		if ( ulHapticDevice == m_rHand[Left].m_source )
-		{
-			vr::VRInput()->TriggerHapticVibrationAction( m_rHand[Left].m_actionHaptic, 0, 1, 4.f, 1.0f, vr::k_ulInvalidInputValueHandle );
-		}
-		if ( ulHapticDevice == m_rHand[Right].m_source )
-		{
-			vr::VRInput()->TriggerHapticVibrationAction( m_rHand[Right].m_actionHaptic, 0, 1, 4.f, 1.0f, vr::k_ulInvalidInputValueHandle );
-		}
-	}
-
 	vr::InputAnalogActionData_t analogData;
 	if ( vr::VRInput()->GetAnalogActionData( m_actionAnalongInput, &analogData, sizeof( analogData ), vr::k_ulInvalidInputValueHandle ) == vr::VRInputError_None && analogData.bActive )
 	{
 		m_vAnalogValue[0] = analogData.x;
 		m_vAnalogValue[1] = analogData.y;
-	}
-
-	m_rHand[Left].m_bShowController = true;
-	m_rHand[Right].m_bShowController = true;
-
-	vr::VRInputValueHandle_t ulHideDevice;
-	if ( GetDigitalActionState( m_actionHideThisController, &ulHideDevice ) )
-	{
-		if ( ulHideDevice == m_rHand[Left].m_source )
-		{
-			m_rHand[Left].m_bShowController = false;
-		}
-		if ( ulHideDevice == m_rHand[Right].m_source )
-		{
-			m_rHand[Right].m_bShowController = false;
-		}
-	}
-
-	for ( EHand eHand = Left; eHand <= Right; ((int&)eHand)++ )
-	{
-		vr::InputPoseActionData_t poseData;
-		if ( vr::VRInput()->GetPoseActionDataForNextFrame( m_rHand[eHand].m_actionPose, vr::TrackingUniverseStanding, &poseData, sizeof( poseData ), vr::k_ulInvalidInputValueHandle ) != vr::VRInputError_None
-			|| !poseData.bActive || !poseData.pose.bPoseIsValid )
-		{
-			m_rHand[eHand].m_bShowController = false;
-		}
-		else
-		{
-			m_rHand[eHand].m_rmat4Pose = ConvertSteamVRMatrixToMatrix4( poseData.pose.mDeviceToAbsoluteTracking );
-
-			vr::InputOriginInfo_t originInfo;
-			if ( vr::VRInput()->GetOriginTrackedDeviceInfo( poseData.activeOrigin, &originInfo, sizeof( originInfo ) ) == vr::VRInputError_None 
-				&& originInfo.trackedDeviceIndex != vr::k_unTrackedDeviceIndexInvalid )
-			{
-				std::string sRenderModelName = GetTrackedDeviceString( originInfo.trackedDeviceIndex, vr::Prop_RenderModelName_String );
-				if ( sRenderModelName != m_rHand[eHand].m_sRenderModelName )
-				{
-					m_rHand[eHand].m_pRenderModel = FindOrLoadRenderModel( sRenderModelName.c_str() );
-					m_rHand[eHand].m_sRenderModelName = sRenderModelName;
-				}
-			}
-		}
 	}
 
 	return bRet;
@@ -1211,7 +1104,6 @@ void CMainApplication::RenderFrame()
 	// for now as fast as possible
 	if ( m_pHMD )
 	{
-		//RenderControllerAxes();
 		RenderStereoTargets();
 		RenderCompanionWindow();
 
@@ -1458,71 +1350,6 @@ bool CMainApplication::CreateAllShaders()
 		return false;
 	}
 
-	m_unControllerTransformProgramID = CompileGLShader(
-		"Controller",
-
-		// vertex shader
-		"#version 410\n"
-		"uniform mat4 matrix;\n"
-		"layout(location = 0) in vec4 position;\n"
-		"layout(location = 1) in vec3 v3ColorIn;\n"
-		"out vec4 v4Color;\n"
-		"void main()\n"
-		"{\n"
-		"	v4Color.xyz = v3ColorIn; v4Color.a = 1.0;\n"
-		"	gl_Position = matrix * position;\n"
-		"}\n",
-
-		// fragment shader
-		"#version 410\n"
-		"in vec4 v4Color;\n"
-		"out vec4 outputColor;\n"
-		"void main()\n"
-		"{\n"
-		"   outputColor = v4Color;\n"
-		"}\n"
-		);
-	m_nControllerMatrixLocation = glGetUniformLocation( m_unControllerTransformProgramID, "matrix" );
-	if( m_nControllerMatrixLocation == -1 )
-	{
-		dprintf( "Unable to find matrix uniform in controller shader\n" );
-		return false;
-	}
-
-	m_unRenderModelProgramID = CompileGLShader( 
-		"render model",
-
-		// vertex shader
-		"#version 410\n"
-		"uniform mat4 matrix;\n"
-		"layout(location = 0) in vec4 position;\n"
-		"layout(location = 1) in vec3 v3NormalIn;\n"
-		"layout(location = 2) in vec2 v2TexCoordsIn;\n"
-		"out vec2 v2TexCoord;\n"
-		"void main()\n"
-		"{\n"
-		"	v2TexCoord = v2TexCoordsIn;\n"
-		"	gl_Position = matrix * vec4(position.xyz, 1);\n"
-		"}\n",
-
-		//fragment shader
-		"#version 410 core\n"
-		"uniform sampler2D diffuse;\n"
-		"in vec2 v2TexCoord;\n"
-		"out vec4 outputColor;\n"
-		"void main()\n"
-		"{\n"
-		"   outputColor = texture( diffuse, v2TexCoord);\n"
-		"}\n"
-
-		);
-	m_nRenderModelMatrixLocation = glGetUniformLocation( m_unRenderModelProgramID, "matrix" );
-	if( m_nRenderModelMatrixLocation == -1 )
-	{
-		dprintf( "Unable to find matrix uniform in render model shader\n" );
-		return false;
-	}
-
 	m_unCompanionWindowProgramID = CompileGLShader(
 		"CompanionWindow",
 
@@ -1550,8 +1377,6 @@ bool CMainApplication::CreateAllShaders()
 		);
 
 	return m_unSceneProgramID != 0 
-		&& m_unControllerTransformProgramID != 0
-		&& m_unRenderModelProgramID != 0
 		&& m_unCompanionWindowProgramID != 0;
 }
 
@@ -1810,101 +1635,6 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 	glUniform2fv(m_nArrowSizeLocation, 1, &cursor_scale_uniform[0]);
 	glUseProgram( 0 );
 }
-
-
-//-----------------------------------------------------------------------------
-// Purpose: Draw all of the controllers as X/Y/Z lines
-//-----------------------------------------------------------------------------
-void CMainApplication::RenderControllerAxes()
-{
-	// Don't attempt to update controllers if input is not available
-	if( !m_pHMD->IsInputAvailable() )
-		return;
-
-	std::vector<float> vertdataarray;
-
-	m_uiControllerVertcount = 0;
-	m_iTrackedControllerCount = 0;
-
-	for ( EHand eHand = Left; eHand <= Right; ((int&)eHand)++ )
-	{
-		if ( !m_rHand[eHand].m_bShowController )
-			continue;
-
-		const glm::mat4 & mat = m_rHand[eHand].m_rmat4Pose;
-
-		glm::vec4 center = mat * glm::vec4( 0, 0, 0, 1 );
-
-		for ( int i = 0; i < 3; ++i )
-		{
-			glm::vec3 color( 0, 0, 0 );
-			glm::vec4 point( 0, 0, 0, 1 );
-			point[i] += 0.05f;  // offset in X, Y, Z
-			color[i] = 1.0;  // R, G, B
-			point = mat * point;
-			vertdataarray.push_back( center.x );
-			vertdataarray.push_back( center.y );
-			vertdataarray.push_back( center.z );
-
-			vertdataarray.push_back( color.x );
-			vertdataarray.push_back( color.y );
-			vertdataarray.push_back( color.z );
-		
-			vertdataarray.push_back( point.x );
-			vertdataarray.push_back( point.y );
-			vertdataarray.push_back( point.z );
-		
-			vertdataarray.push_back( color.x );
-			vertdataarray.push_back( color.y );
-			vertdataarray.push_back( color.z );
-		
-			m_uiControllerVertcount += 2;
-		}
-
-		glm::vec4 start = mat * glm::vec4( 0, 0, -0.02f, 1 );
-		glm::vec4 end = mat * glm::vec4( 0, 0, -39.f, 1 );
-		glm::vec3 color( .92f, .92f, .71f );
-
-		vertdataarray.push_back( start.x );vertdataarray.push_back( start.y );vertdataarray.push_back( start.z );
-		vertdataarray.push_back( color.x );vertdataarray.push_back( color.y );vertdataarray.push_back( color.z );
-
-		vertdataarray.push_back( end.x );vertdataarray.push_back( end.y );vertdataarray.push_back( end.z );
-		vertdataarray.push_back( color.x );vertdataarray.push_back( color.y );vertdataarray.push_back( color.z );
-		m_uiControllerVertcount += 2;
-	}
-
-	// Setup the VAO the first time through.
-	if ( m_unControllerVAO == 0 )
-	{
-		glGenVertexArrays( 1, &m_unControllerVAO );
-		glBindVertexArray( m_unControllerVAO );
-
-		glGenBuffers( 1, &m_glControllerVertBuffer );
-		glBindBuffer( GL_ARRAY_BUFFER, m_glControllerVertBuffer );
-
-		GLuint stride = 2 * 3 * sizeof( float );
-		uintptr_t offset = 0;
-
-		glEnableVertexAttribArray( 0 );
-		glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, stride, (const void *)offset);
-
-		offset += sizeof( glm::vec3 );
-		glEnableVertexAttribArray( 1 );
-		glVertexAttribPointer( 1, 3, GL_FLOAT, GL_FALSE, stride, (const void *)offset);
-
-		glBindVertexArray( 0 );
-	}
-
-	glBindBuffer( GL_ARRAY_BUFFER, m_glControllerVertBuffer );
-
-	// set vertex data if we have some
-	if( vertdataarray.size() > 0 )
-	{
-		//$ TODO: Use glBufferSubData for this...
-		glBufferData( GL_ARRAY_BUFFER, sizeof(float) * vertdataarray.size(), &vertdataarray[0], GL_STREAM_DRAW );
-	}
-}
-
 
 //-----------------------------------------------------------------------------
 // Purpose:
@@ -2331,77 +2061,6 @@ void CMainApplication::UpdateHMDMatrixPose()
 		m_mat4HMDPose = glm::inverse(m_rmat4DevicePose[vr::k_unTrackedDeviceIndex_Hmd]);
 	}
 }
-
-
-//-----------------------------------------------------------------------------
-// Purpose: Finds a render model we've already loaded or loads a new one
-//-----------------------------------------------------------------------------
-CGLRenderModel *CMainApplication::FindOrLoadRenderModel( const char *pchRenderModelName )
-{
-	CGLRenderModel *pRenderModel = NULL;
-	for( std::vector< CGLRenderModel * >::iterator i = m_vecRenderModels.begin(); i != m_vecRenderModels.end(); i++ )
-	{
-		if( !strcmp( (*i)->GetName().c_str(), pchRenderModelName ) )
-		{
-			pRenderModel = *i;
-			break;
-		}
-	}
-
-	// load the model if we didn't find one
-	if( !pRenderModel )
-	{
-		vr::RenderModel_t *pModel;
-		vr::EVRRenderModelError error;
-		while ( 1 )
-		{
-			error = vr::VRRenderModels()->LoadRenderModel_Async( pchRenderModelName, &pModel );
-			if ( error != vr::VRRenderModelError_Loading )
-				break;
-
-			ThreadSleep( 1 );
-		}
-
-		if ( error != vr::VRRenderModelError_None )
-		{
-			dprintf( "Unable to load render model %s - %s\n", pchRenderModelName, vr::VRRenderModels()->GetRenderModelErrorNameFromEnum( error ) );
-			return NULL; // move on to the next tracked device
-		}
-
-		vr::RenderModel_TextureMap_t *pTexture;
-		while ( 1 )
-		{
-			error = vr::VRRenderModels()->LoadTexture_Async( pModel->diffuseTextureId, &pTexture );
-			if ( error != vr::VRRenderModelError_Loading )
-				break;
-
-			ThreadSleep( 1 );
-		}
-
-		if ( error != vr::VRRenderModelError_None )
-		{
-			dprintf( "Unable to load render texture id:%d for render model %s\n", pModel->diffuseTextureId, pchRenderModelName );
-			vr::VRRenderModels()->FreeRenderModel( pModel );
-			return NULL; // move on to the next tracked device
-		}
-
-		pRenderModel = new CGLRenderModel( pchRenderModelName );
-		if ( !pRenderModel->BInit( *pModel, *pTexture ) )
-		{
-			dprintf( "Unable to create GL model from render model %s\n", pchRenderModelName );
-			delete pRenderModel;
-			pRenderModel = NULL;
-		}
-		else
-		{
-			m_vecRenderModels.push_back( pRenderModel );
-		}
-		vr::VRRenderModels()->FreeRenderModel( pModel );
-		vr::VRRenderModels()->FreeTexture( pTexture );
-	}
-	return pRenderModel;
-}
-
 
 //-----------------------------------------------------------------------------
 // Purpose: Converts a SteamVR matrix to our local matrix class
