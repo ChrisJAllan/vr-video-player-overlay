@@ -569,7 +569,7 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	cursor_scale_uniform[0] = 0.0f;
 	cursor_scale_uniform[1] = 0.0f;
 
-#ifdef DEBUG
+#ifdef _DEBUG
 	m_bDebugOpenGL = true;
 #endif
 };
@@ -1757,19 +1757,22 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 		long columns = 64;
 		double angle_start = -0.8;
 		double angle_end = 0.8;
-		double radius = 1.5 * width_ratio;
 		double height = 1.5;
-
 		double angle_len = angle_end - angle_start;
+
+		double width_start = sin(angle_start);
+		double width_end = sin(angle_start + angle_len);
+		double target_radius = height * width_ratio;
+		double radius = 2.0 * (target_radius / (width_end - width_start));
 
 		for(long column = 0; column < columns; ++column) {
 			double t1 = ((double)column / (double)columns);
 			double t2 = (((double)column + 1) / (double)columns);
 
 			double x1 = sin(angle_start + t1 * angle_len) * radius;
-			double y1 = cos(angle_start + t1 * angle_len) * radius * 0.5;
+			double y1 = cos(angle_start + t1 * angle_len) * radius * 0.75;
 			double x2 = sin(angle_start + t2 * angle_len) * radius;
-			double y2 = cos(angle_start + t2 * angle_len) * radius * 0.5;
+			double y2 = cos(angle_start + t2 * angle_len) * radius * 0.75;
 
 			//     2     n
 			// 1  /|   / |    m
