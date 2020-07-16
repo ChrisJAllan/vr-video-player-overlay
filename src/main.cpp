@@ -568,6 +568,10 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 
 	cursor_scale_uniform[0] = 0.0f;
 	cursor_scale_uniform[1] = 0.0f;
+
+#ifdef DEBUG
+	m_bDebugOpenGL = true;
+#endif
 };
 
 
@@ -808,9 +812,9 @@ bool CMainApplication::BInitGL()
 {
 	if( m_bDebugOpenGL )
 	{
+		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
 		glDebugMessageCallback( (GLDEBUGPROC)DebugCallback, nullptr);
 		glDebugMessageControl( GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE );
-		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
 	}
 
 	if( !CreateAllShaders() )
@@ -845,9 +849,8 @@ bool CMainApplication::BInitGL()
 
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
  
     float fLargest = 0.0f;
     glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &fLargest);
@@ -985,6 +988,7 @@ bool CMainApplication::HandleInput()
 {
 	SDL_Event sdlEvent;
 	bool bRet = false;
+	bool zoom_resize = false;
 
 	while ( SDL_PollEvent( &sdlEvent ) != 0 )
 	{
@@ -1005,7 +1009,7 @@ bool CMainApplication::HandleInput()
 			if( sdlEvent.key.keysym.sym == SDLK_q )
 			{
 				zoom -= 0.01f;
-				window_resized = true;
+				zoom_resize = true;
 
 				std::stringstream strstr;
 				strstr << "/tmp/vr-video-player_" << src_window_id;
@@ -1015,7 +1019,7 @@ bool CMainApplication::HandleInput()
 			if( sdlEvent.key.keysym.sym == SDLK_e )
 			{
 				zoom += 0.01f;
-				window_resized = true;
+				zoom_resize = true;
 
 				std::stringstream strstr;
 				strstr << "/tmp/vr-video-player_" << src_window_id;
@@ -1054,6 +1058,9 @@ bool CMainApplication::HandleInput()
 		glBindTexture(GL_TEXTURE_2D, 0);
 		SetupScene();
 	}
+
+	if(!window_resized && zoom_resize)
+		SetupScene();
 
 	// Process SteamVR events
 	vr::VREvent_t event;

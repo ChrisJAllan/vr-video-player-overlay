@@ -20,7 +20,7 @@ int window_texture_init(WindowTexture *window_texture, Display *display, Window 
 void window_texture_deinit(WindowTexture *self);
 
 /*
-    This should be called when the target window is resized.
+    This should ONLY be called when the target window is resized.
     Returns 0 on success.
 */
 int window_texture_on_resize(WindowTexture *self);
