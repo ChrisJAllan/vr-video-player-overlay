@@ -1155,7 +1155,6 @@ void CMainApplication::RunMainLoop()
 	bool bQuit = false;
 
 	SDL_StartTextInput();
-	SDL_ShowCursor( SDL_DISABLE );
 
 	SDL_Joystick *controller = SDL_JoystickOpen(0);
 	if (!controller)

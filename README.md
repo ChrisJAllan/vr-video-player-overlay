@@ -40,6 +40,8 @@ The video might not be in front of you, so to move the video in front of you, yo
 killall -USR1 vr-video-player`
 ```
 
+You can zoom the view with the Q and E keys when the vr-video-player is focused.
+
 You can launch vr-video-player without any arguments to show a list of all arguments.
 
 Note: If the cursor position is weird and does not match what you are seeing in stereoscopic vr mode, then try running the vr video player with the --cursor-wrap option:
