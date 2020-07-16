@@ -411,7 +411,20 @@ void dprintf( const char *fmt, ... )
 }
 
 static void usage() {
-	fprintf(stderr, "usage: vr-video-player [--flat] [--left-right|--right-left|--plane] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] [--cursor-wrap|--no-cursor-wrap] <window_id>\n");
+	fprintf(stderr, "usage: vr-video-player [--sphere] [--flat] [--left-right|--right-left|--plane] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] [--cursor-wrap|--no-cursor-wrap] <window_id>\n");
+	fprintf(stderr, "OPTIONS\n");
+    fprintf(stderr, "  --sphere          View the window as a stereoscopic 180 degrees screen (half sphere). The view will be attached to your head in vr. This is recommended for 180 degrees videos. This option conflicts with the --flat and --plane options. This is the default value\n");
+	fprintf(stderr, "  --flat            View the window as a stereoscopic flat screen. This is recommended for stereoscopic videos and games. This option conflicts with the --sphere and --plane options\n");
+    fprintf(stderr, "  --left-right      This option is used together with --flat, to specify if the left side of the window is meant to be viewed with the left eye and the right side is meant to be viewed by the right eye. This is the default value\n");
+    fprintf(stderr, "  --right-left      This option is used together with --flat, to specify if the left side of the window is meant to be viewed with the right eye and the right side is meant to be viewed by the left eye\n");
+    fprintf(stderr, "  --plane           View the window as a slightly curved screen. This is recommended for non-stereoscopic content. This option conflicts with the --sphere and --flat options\n");
+    fprintf(stderr, "  --stretch         This option is used together with --flat, To specify if the size of both sides of the window should be combined and stretch to that size when viewed in vr. This is the default value\n");
+    fprintf(stderr, "  --no-stretch      This option is used together with --flat, To specify if the size of one side of the window should be the size of the whole window when viewed in vr. This is the option you want if the window looks too wide\n");
+    fprintf(stderr, "  --zoom            Change the distance to the window. This should be a positive value. In flat and plane modes, this is the distance to the window when the window is reset (with W key or controller trigger button). The default value is 0 for all modes except sphere mode, where the default value is 1\n");
+    fprintf(stderr, "  --cursor-scale    Change the size of the cursor. This should be a positive value. If set to 0, then the cursor is hidden. The default value is 1 for all modes except sphere mode, where the default value is 0\n");
+    fprintf(stderr, "  --cursor-wrap     If this option is set, then the cursor position in the vr view will wrap around when it reached the center of the window (i.e when it reaches the edge of one side of the stereoscopic view). This option is only valid for stereoscopic view (flat and sphere modes)\n");
+    fprintf(stderr, "  --no-cursor-wrap  If this option is set, then the cursor position in the vr view will match the the real cursor position inside the window\n");
+    fprintf(stderr, "  window_id         The X11 window id of the window to view in vr. This option is required\n");
 	exit(1);
 }
 
@@ -457,7 +470,14 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	bool cursor_wrap_set = false;
 
 	for(int i = 1; i < argc; ++i) {
-		if(strcmp(argv[i], "--flat") == 0) {
+        if(strcmp(argv[i], "--sphere") == 0) {
+			if(projection_arg) {
+				fprintf(stderr, "Error: --sphere option can't be used together with the %s option\n", projection_arg);
+				exit(1);
+			}
+			projection_mode = ProjectionMode::SPHERE;
+			projection_arg = argv[i];
+		} else if(strcmp(argv[i], "--flat") == 0) {
 			if(projection_arg) {
 				fprintf(stderr, "Error: --flat option can't be used together with the %s option\n", projection_arg);
 				exit(1);
@@ -794,7 +814,7 @@ bool CMainApplication::BInitGL()
 
 	glUseProgram( m_unSceneProgramID );
 
-	glActiveTexture(GL_TEXTURE1);
+	//glActiveTexture(GL_TEXTURE0);
 	if(window_texture_init(&window_texture, x_display, src_window_id) != 0)
 		return false;
 
@@ -808,7 +828,7 @@ bool CMainApplication::BInitGL()
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	glActiveTexture(GL_TEXTURE1);
+	//glActiveTexture(GL_TEXTURE1);
 	glGenTextures(1, &arrow_image_texture_id);
     glBindTexture(GL_TEXTURE_2D, arrow_image_texture_id);
     if(arrow_image_texture_id == 0)
