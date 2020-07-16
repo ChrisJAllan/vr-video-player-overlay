@@ -59,6 +59,10 @@ extern "C" {
 #include <signal.h>
 #include <libgen.h>
 
+#include <iostream>
+#include <fstream>
+#include <sstream>
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "../dependencies/stb_image.h"
 
@@ -993,6 +997,36 @@ bool CMainApplication::HandleInput()
 			if( sdlEvent.key.keysym.sym == SDLK_w )
 			{
 				m_bResetRotation = true;
+			}
+			if( sdlEvent.key.keysym.sym == SDLK_ESCAPE )
+			{
+				bRet = true;
+			}
+			if( sdlEvent.key.keysym.sym == SDLK_q )
+			{
+				zoom -= 0.01f;
+				window_resized = true;
+
+				std::ofstream zoomstate;
+				std::stringstream strstr;
+				strstr << "/tmp/vr-video-player_" << src_window_id << ".txt";
+				std::string s = strstr.str();
+				zoomstate << zoom;
+				zoomstate.close();
+			}
+			if( sdlEvent.key.keysym.sym == SDLK_e )
+			{
+				zoom += 0.01f;
+				window_resized = true;
+
+				std::ofstream zoomstate;
+				std::stringstream strstr;
+				strstr << "/tmp/vr-video-player_" << src_window_id << ".txt";
+				std::string s = strstr.str();
+				zoomstate.open (s);
+
+				zoomstate << zoom;
+				zoomstate.close();
 			}
 		}
 	}
