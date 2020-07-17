@@ -390,6 +390,7 @@ void dprintf( const char *fmt, ... )
 
 static void usage() {
 	fprintf(stderr, "usage: vr-video-player [--sphere] [--flat] [--left-right|--right-left|--plane] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] [--cursor-wrap|--no-cursor-wrap] <window_id>\n");
+    fprintf(stderr, "\n");
 	fprintf(stderr, "OPTIONS\n");
     fprintf(stderr, "  --sphere          View the window as a stereoscopic 180 degrees screen (half sphere). The view will be attached to your head in vr. This is recommended for 180 degrees videos. This option conflicts with the --flat and --plane options. This is the default value\n");
 	fprintf(stderr, "  --flat            View the window as a stereoscopic flat screen. This is recommended for stereoscopic videos and games. This option conflicts with the --sphere and --plane options\n");
@@ -403,6 +404,15 @@ static void usage() {
     fprintf(stderr, "  --cursor-wrap     If this option is set, then the cursor position in the vr view will wrap around when it reached the center of the window (i.e when it reaches the edge of one side of the stereoscopic view). This option is only valid for stereoscopic view (flat and sphere modes)\n");
     fprintf(stderr, "  --no-cursor-wrap  If this option is set, then the cursor position in the vr view will match the the real cursor position inside the window\n");
     fprintf(stderr, "  window_id         The X11 window id of the window to view in vr. This option is required\n");
+    fprintf(stderr, "\n");
+    fprintf(stderr, "EXAMPLES\n");
+    fprintf(stderr, "  vr-video-player 1830423\n");
+    fprintf(stderr, "  vr-video-player --flat 1830423\n");
+    fprintf(stderr, "  vr-video-player --flat --right-left 1830423\n");
+    fprintf(stderr, "  vr-video-player --plane --zoom 2.0 1830423\n");
+    fprintf(stderr, "  vr-video-player --flat $(xdotool selectwindow)\n");
+    fprintf(stderr, "\n");
+    fprintf(stderr, "Note: All options except window_id are optional\n");
 	exit(1);
 }
 
