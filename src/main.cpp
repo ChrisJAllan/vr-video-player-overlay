@@ -1662,7 +1662,7 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 	}
 
 	cursor_scale_uniform[0] = 0.01 * cursor_scale;
-	cursor_scale_uniform[1] = cursor_scale_uniform[0] * arrow_ratio * ((float)arrow_image_height / (float)(arrow_image_width == 0.0f ? 1.0f : arrow_image_width));
+	cursor_scale_uniform[1] = cursor_scale_uniform[0] * arrow_ratio * ((float)arrow_image_height / (float)(arrow_image_width == 0 ? 1 : arrow_image_width));
 
 	glUseProgram( m_unSceneProgramID );
 	glUniform2fv(m_nArrowSizeLocation, 1, &cursor_scale_uniform[0]);
