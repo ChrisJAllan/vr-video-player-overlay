@@ -47,6 +47,7 @@ extern "C" {
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <X11/Xlib.h>
+#include <X11/extensions/Xfixes.h>
 #include <X11/Xproto.h>
 #include <GL/glxproto.h>
 
@@ -62,9 +63,6 @@ extern "C" {
 #include <iostream>
 #include <fstream>
 #include <sstream>
-
-#define STB_IMAGE_IMPLEMENTATION
-#include "../dependencies/stb_image.h"
 
 #ifndef _countof
 #define _countof(x) (sizeof(x)/sizeof((x)[0]))
@@ -122,6 +120,8 @@ public:
 
 	GLuint CompileGLShader( const char *pchShaderName, const char *pchVertexShader, const char *pchFragmentShader );
 	bool CreateAllShaders();
+
+	bool SetCursorFromX11CursorImage(XFixesCursorImage *x11_cursor_image);
 
 private: 
 	bool m_bDebugOpenGL;
@@ -249,6 +249,9 @@ private: // X compositor
 	Uint32 window_resize_time;
 	bool window_resized;
 
+	int x_fixes_event_base;
+	int x_fixes_error_base;
+
 	GLint pixmap_texture_width = 0;
 	GLint pixmap_texture_height = 0;
 
@@ -266,17 +269,20 @@ private: // X compositor
 
 	ProjectionMode projection_mode = ProjectionMode::SPHERE;
 	double zoom = 0.0;
-	float cursor_scale = 1.0f;
+	float cursor_scale = 2.0f;
 	ViewMode view_mode = ViewMode::LEFT_RIGHT;
 	bool stretch = true;
 	bool cursor_wrap = true;
 
 	GLuint arrow_image_texture_id = 0;
-	stbi_uc *arrow_image_data = nullptr;
-	int arrow_image_width = 0;
-	int arrow_image_height = 0;
+	int arrow_image_width = 1;
+	int arrow_image_height = 1;
+	int cursor_offset_x = 0;
+	int cursor_offset_y = 0;
 
 	float cursor_scale_uniform[2];
+	double arrow_ratio;
+	bool cursor_image_set = false;
 };
 
 
@@ -603,6 +609,13 @@ bool CMainApplication::BInit()
 
 	XSelectInput(x_display, src_window_id, StructureNotifyMask);
 
+	if(!XFixesQueryExtension(x_display, &x_fixes_event_base, &x_fixes_error_base)) {
+		fprintf(stderr, "Your x11 server is missing the xfixes extension\n");
+		return false;
+	}
+
+	XFixesSelectCursorInput(x_display, src_window_id, XFixesDisplayCursorNotifyMask);
+
 	if ( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_JOYSTICK ) < 0 )
 	{
 		printf("%s - SDL could not initialize! SDL Error: %s\n", __FUNCTION__, SDL_GetError());
@@ -681,23 +694,6 @@ bool CMainApplication::BInit()
  
 // 		m_MillisecondsTimer.start(1, this);
 // 		m_SecondsTimer.start(1000, this);
-
-	char arrow_path[PATH_MAX];
-	realpath("images/arrow.png", arrow_path);
-	if(access(arrow_path, F_OK) == -1) {
-		strcpy(arrow_path, "/usr/share/vr-video-player/images/arrow.png");
-		if(access(arrow_path, F_OK) == -1) {
-			fprintf(stderr, "Unable to find arrow.png!\n");
-			exit(1);
-		}
-	}
-
-	int channels_in_file;
-	arrow_image_data = stbi_load(arrow_path, &arrow_image_width, &arrow_image_height, &channels_in_file, 0);
-	if(!arrow_image_data) {
-		fprintf(stderr, "Failed to load arrow.png!\n");
-		exit(1);
-	}
 	
 	if (!BInitGL())
 	{
@@ -787,23 +783,8 @@ bool CMainApplication::BInitGL()
 
 	//glActiveTexture(GL_TEXTURE1);
 	glGenTextures(1, &arrow_image_texture_id);
-    glBindTexture(GL_TEXTURE_2D, arrow_image_texture_id);
     if(arrow_image_texture_id == 0)
         return false;
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, arrow_image_width, arrow_image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, arrow_image_data);
-	stbi_image_free(arrow_image_data);
-	arrow_image_data = nullptr;
-    glGenerateMipmap(GL_TEXTURE_2D);
-
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
- 
-    float fLargest = 0.0f;
-    glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &fLargest);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, fLargest);
 
     glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -900,8 +881,6 @@ void CMainApplication::Shutdown()
 		}
 	}
 
-	if(arrow_image_data)
-		stbi_image_free(arrow_image_data);
 	window_texture_deinit(&window_texture);
 
 	if( m_pCompanionWindow )
@@ -974,6 +953,19 @@ bool CMainApplication::HandleInput()
 			window_resize_time = SDL_GetTicks();
 			window_resized = true;
 		}
+	}
+
+	if(XCheckTypedWindowEvent(x_display, src_window_id, x_fixes_event_base + XFixesCursorNotify, &xev)) {
+		XFixesCursorNotifyEvent *cursor_notify_event = (XFixesCursorNotifyEvent*)&xev;
+		if(cursor_notify_event->subtype == XFixesDisplayCursorNotify && cursor_notify_event->window == src_window_id) {
+			cursor_image_set = true;
+			SetCursorFromX11CursorImage(XFixesGetCursorImage(x_display));
+		}
+	}
+
+	if(!cursor_image_set) {
+		cursor_image_set = true;
+		SetCursorFromX11CursorImage(XFixesGetCursorImage(x_display));
 	}
 
 	Window dummyW;
@@ -1290,10 +1282,11 @@ bool CMainApplication::CreateAllShaders()
 		"void main()\n"
 		"{\n"
 		"	vec2 cursor_diff = (v2CursorLocation + arrow_size_frag) - v2UVcoords;\n"
-		"	vec4 arrow_col = texture(arrow_texture, (arrow_size_frag - cursor_diff) / arrow_size_frag);\n"
+		"	vec2 arrow_coord = (arrow_size_frag - cursor_diff) / arrow_size_frag;\n"
+		"	vec4 arrow_col = texture(arrow_texture, arrow_coord);\n"
 		"	vec4 col = texture(mytexture, v2UVcoords);\n"
-		"	if(arrow_size_frag.x < 0.001 || arrow_size_frag.y < 0.001) arrow_col.a = 0.0;\n"
-		"	outputColor = mix(col, arrow_col, arrow_col.a);\n"
+		"	if(arrow_size_frag.x < 0.001 || arrow_size_frag.y < 0.001 || arrow_coord.x < 0.0 || arrow_coord.x > 1.0 || arrow_coord.y < 0.0 || arrow_coord.y > 1.0) arrow_col.a = 0.0;\n"
+		"	outputColor = mix(col, arrow_col.bgra, arrow_col.a);\n"
 		"}\n"
 		);
 	m_nSceneMatrixLocation = glGetUniformLocation( m_unSceneProgramID, "matrix" );
@@ -1365,6 +1358,59 @@ bool CMainApplication::CreateAllShaders()
 
 	return m_unSceneProgramID != 0 
 		&& m_unCompanionWindowProgramID != 0;
+}
+
+bool CMainApplication::SetCursorFromX11CursorImage(XFixesCursorImage *x11_cursor_image) {
+	if(!x11_cursor_image || !x11_cursor_image->pixels)
+		return false;
+
+	cursor_offset_x = x11_cursor_image->xhot;
+	cursor_offset_y = x11_cursor_image->yhot;
+	glBindTexture(GL_TEXTURE_2D, arrow_image_texture_id);
+
+	arrow_image_width = x11_cursor_image->width;
+	arrow_image_height = x11_cursor_image->height;
+	const unsigned long *pixels = x11_cursor_image->pixels;
+	uint8_t *cursor_data = new uint8_t[arrow_image_width * arrow_image_height * 4];
+	uint8_t *out = cursor_data;
+	/* Un-premultiply alpha */
+	for(int y = 0; y < arrow_image_height; ++y) {
+		for(int x = 0; x < arrow_image_width; ++x) {
+			uint32_t pixel = *pixels++;
+			uint8_t *in = (uint8_t*)&pixel;
+			uint8_t alpha = in[3];
+			if(alpha == 0)
+				alpha = 1;
+
+			*out++ = (unsigned)*in++ * 255/alpha;
+			*out++ = (unsigned)*in++ * 255/alpha;
+			*out++ = (unsigned)*in++ * 255/alpha;
+			*out++ = *in++;
+		}
+	}
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, arrow_image_width, arrow_image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, cursor_data);
+	delete []cursor_data;
+	glGenerateMipmap(GL_TEXTURE_2D);
+
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+
+	float fLargest = 0.0f;
+	glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &fLargest);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, fLargest);
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	cursor_scale_uniform[0] = 0.01 * cursor_scale;
+	cursor_scale_uniform[1] = cursor_scale_uniform[0] * arrow_ratio * ((float)arrow_image_height / (float)(arrow_image_width == 0 ? 1 : arrow_image_width));
+
+	glUseProgram( m_unSceneProgramID );
+	glUniform2fv(m_nArrowSizeLocation, 1, &cursor_scale_uniform[0]);
+	glUseProgram( 0 );
+	return true;
 }
 
 
@@ -1467,7 +1513,7 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 	glm::vec4 H = mat * glm::vec4( 0, 1, 1, 1 );
 
 	double width_ratio = (double)pixmap_texture_width / (double)pixmap_texture_height;
-	double arrow_ratio = width_ratio;
+	arrow_ratio = width_ratio;
 
 	if(projection_mode == ProjectionMode::SPHERE)
 	{
@@ -1616,7 +1662,7 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 	}
 
 	cursor_scale_uniform[0] = 0.01 * cursor_scale;
-	cursor_scale_uniform[1] = cursor_scale_uniform[0] * arrow_ratio * ((float)arrow_image_height / (float)arrow_image_width);
+	cursor_scale_uniform[1] = cursor_scale_uniform[0] * arrow_ratio * ((float)arrow_image_height / (float)(arrow_image_width == 0.0f ? 1.0f : arrow_image_width));
 
 	glUseProgram( m_unSceneProgramID );
 	glUniform2fv(m_nArrowSizeLocation, 1, &cursor_scale_uniform[0]);
@@ -1808,7 +1854,6 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 	glUniformMatrix4fv( m_nSceneMatrixLocation, 1, GL_FALSE, glm::value_ptr(GetCurrentViewProjectionMatrix( nEye )));
 
 	float m[2];
-	// -10 offset is the distance between the edge of the arrow.png image to the arrow itself
 	m[0] = mouse_x / (float)window_width;
 	m[1] = mouse_y / (float)window_height;
 
@@ -1855,12 +1900,11 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 
 	float drawn_arrow_width = cursor_scale_uniform[0] * window_width;
 	float drawn_arrow_height = cursor_scale_uniform[1] * window_height;
-	float arrow_drawn_scale_x = drawn_arrow_width / (float)arrow_image_width;
-	float arrow_drawn_scale_y = drawn_arrow_height / (float)arrow_image_height;
+	float arrow_drawn_scale_x = drawn_arrow_width / (float)(arrow_image_width == 0 ? 1 : arrow_image_width);
+	float arrow_drawn_scale_y = drawn_arrow_height / (float)(arrow_image_height == 0 ? 1 : arrow_image_height);
 
-	int cursor_offset = -10;
-	m[0] += (cursor_offset * arrow_drawn_scale_x) / (float)window_width;
-	m[1] += (cursor_offset * arrow_drawn_scale_y) / (float)window_height;
+	m[0] += (-cursor_offset_x * arrow_drawn_scale_x) / (float)window_width;
+	m[1] += (-cursor_offset_y * arrow_drawn_scale_y) / (float)window_height;
 
 	glUniform2fv(m_nCursorLocation, 1, &m[0]);
 

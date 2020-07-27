@@ -50,13 +50,10 @@ Note: If the cursor position is weird and does not match what you are seeing in 
 game which is normally at the center moves to 1/4 and 3/4 of the window. With --cursor-wrap, the cursor position in VR will match the real position of the
 cursor relative to the window and with --no-cursor-wrap the cursor will match the position of the cursor as the game sees it.
 
-Note: --cursor-scale is set to 0 by default in 180 degrees stereoscopic mode and --no-cursor-wrap is set by default in --flat mode.
+Note: --cursor-scale is set to 0 by default in 180 degrees stereoscopic mode and 2 in other modes. Also --no-cursor-wrap is set by default in --flat mode.
 
 # Games
 This vr video player can also be used to play games in VR to to get a 3D effect, and even for games that don't support VR.\
 For games such as Trine that have built-in side-by-side view, you can launch it with proton and there is a launch option for side-by-side view. Select this and when the game launches, get the X11 window id of the game
 and launch vr video player with the `--flat` option.\
 For games that do not have built-in side-by-side view, you can use [ReShade](https://reshade.me/) (or [vkBasalt](https://github.com/DadSchoorse/vkBasalt) for linux native games) and [SuperDepth3D_VR.fx](https://github.com/BlueSkyDefender/Depth3D) effect with proton. This will make the game render with side-by-side view and you can then get the X11 window id of the game and launch vr video player with the `--flat` option. The game you are playing might require settings to be changed manually in ReShade for SuperDepth3D_VR to make it look better.
-
-# Images
-`images/arrow.png` is from the adwaita project and it's licensed under Creative Commons Attribution-Share Alike 3.0 United States License. To view a copy of the license, visit http://creativecommons.org/licenses/by-sa/3.0/.
