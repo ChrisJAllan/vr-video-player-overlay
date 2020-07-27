@@ -35,7 +35,7 @@ if you want to watch a regular non-stereoscopic video, then run:
 ```
 and click on your video player.
 
-The video might not be in front of you, so to move the video in front of you, you can pull the trigger on the vr controller or press the "Alt + F1" key while the target window is focused, or press the "W" key while the vr-video-player is focused or press the select/back button on an xbox controller while the vr-video-player is focused. You can also send the SIGUSR1 signal to the application, using the following command:
+The video might not be in front of you, so to move the video in front of you, you can pull the trigger on the vr controller or press the "W" key while the vr-video-player is focused or press the select/back button on an xbox controller while the application is focused. You can also send the SIGUSR1 signal to the application, using the following command:
 ```
 killall -USR1 vr-video-player`
 ```

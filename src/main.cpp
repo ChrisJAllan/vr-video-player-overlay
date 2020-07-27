@@ -608,8 +608,6 @@ bool CMainApplication::BInit()
 	window_resized = false;
 
 	XSelectInput(x_display, src_window_id, StructureNotifyMask);
-	if(!XGrabKey(x_display, AnyKey, AnyModifier, src_window_id, True, GrabModeAsync, GrabModeAsync))
-		fprintf(stderr, "Failed to grab alt + f1 keybind\n");
 
 	if(!XFixesQueryExtension(x_display, &x_fixes_event_base, &x_fixes_error_base)) {
 		fprintf(stderr, "Your x11 server is missing the xfixes extension\n");
@@ -897,8 +895,6 @@ void CMainApplication::Shutdown()
 		XCloseDisplay(x_display);
 }
 
-#define CLEANMASK(mask) ((mask) & (ShiftMask|ControlMask|Mod1Mask|Mod4Mask|Mod5Mask))
-
 //-----------------------------------------------------------------------------
 // Purpose:
 //-----------------------------------------------------------------------------
@@ -957,12 +953,6 @@ bool CMainApplication::HandleInput()
 			window_resize_time = SDL_GetTicks();
 			window_resized = true;
 		}
-	}
-
-	if (XCheckTypedWindowEvent(x_display, src_window_id, KeyPress, &xev)) {
-		KeySym pressed_keysym = XKeycodeToKeysym(x_display, xev.xkey.keycode, 0);
-		if(pressed_keysym == XK_F1 && CLEANMASK(xev.xkey.state) == Mod1Mask)
-			m_bResetRotation = true;
 	}
 
 	if(XCheckTypedWindowEvent(x_display, src_window_id, x_fixes_event_base + XFixesCursorNotify, &xev)) {
