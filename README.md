@@ -57,3 +57,6 @@ This vr video player can also be used to play games in VR to to get a 3D effect,
 For games such as Trine that have built-in side-by-side view, you can launch it with proton and there is a launch option for side-by-side view. Select this and when the game launches, get the X11 window id of the game
 and launch vr video player with the `--flat` option.\
 For games that do not have built-in side-by-side view, you can use [ReShade](https://reshade.me/) (or [vkBasalt](https://github.com/DadSchoorse/vkBasalt) for linux native games) and [SuperDepth3D_VR.fx](https://github.com/BlueSkyDefender/Depth3D) effect with proton. This will make the game render with side-by-side view and you can then get the X11 window id of the game and launch vr video player with the `--flat` option. The game you are playing might require settings to be changed manually in ReShade for SuperDepth3D_VR to make it look better.
+
+# SteamVR issues
+SteamVR on linux has several issues. For example if you launch vr-video-player it may get stuck with a "Next up" window inside vr. If that is the case, then close SteamVR and make sure all SteamVR are dead (kill them if they aren't) and launch vr-video-player and it should launch SteamVR (this is different than launching the SteamVR application in steam).
