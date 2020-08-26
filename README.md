@@ -5,7 +5,7 @@ Currently only works with stereo video when used for vr videos, but if the vr vi
 the video as a regular video in vr without depth (like a cinema).
 
 # Building
-vr video player can be built by running `./build.sh` or by using [sibs](https://github.com/DEC05EBA/sibs) or if you are running Arch Linux, then you can find it on aur under the name vr-video-player-git (`yay -S vr-video-player-git`).
+vr video player can be built by running `./build.sh` or by using [sibs](https://git.dec05eba.com/sibs) or if you are running Arch Linux, then you can find it on aur under the name vr-video-player-git (`yay -S vr-video-player-git`).
 Dependencies needed when building using `build.sh`: `glm, glew, sdl2, openvr, libx11 and libxcomposite`.
 
 # How to use
