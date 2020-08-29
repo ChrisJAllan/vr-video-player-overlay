@@ -47,6 +47,7 @@ extern "C" {
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <X11/Xlib.h>
+#include <X11/XKBlib.h>
 #include <X11/extensions/Xfixes.h>
 #include <X11/Xproto.h>
 #include <GL/glxproto.h>
@@ -582,6 +583,24 @@ static int xerror(Display *dpy, XErrorEvent *ee) {
     return 0; /* may call exit */ /* TODO: xerrorxlib(dpy, ee); */
 }
 
+static void grabkeys(Display *display) {
+	unsigned int numlockmask = 0;
+    KeyCode numlock_keycode = XKeysymToKeycode(display, XK_Num_Lock);
+    XModifierKeymap *modmap = XGetModifierMapping(display);
+    for(int i = 0; i < 8; ++i) {
+        for(int j = 0; j < modmap->max_keypermod; ++j) {
+            if(modmap->modifiermap[i * modmap->max_keypermod + j] == numlock_keycode)
+                numlockmask = (1 << i); 
+        }
+    }
+	XFreeModifiermap(modmap);
+    
+	Window root_window = DefaultRootWindow(display);
+    unsigned int modifiers[] = { 0, LockMask, numlockmask, numlockmask|LockMask };
+    for(int i = 0; i < 4; ++i)
+        XGrabKey(display, XKeysymToKeycode(display, XK_F1), Mod1Mask|modifiers[i], root_window, False, GrabModeAsync, GrabModeAsync);
+}
+
 
 //-----------------------------------------------------------------------------
 // Purpose:
@@ -607,7 +626,10 @@ bool CMainApplication::BInit()
 	window_resize_time = SDL_GetTicks();
 	window_resized = false;
 
-	XSelectInput(x_display, src_window_id, StructureNotifyMask);
+	grabkeys(x_display);
+	XSelectInput(x_display, src_window_id, StructureNotifyMask|KeyPressMask|KeyReleaseMask);
+	Bool sup = False;
+	XkbSetDetectableAutoRepeat(x_display, True, &sup);
 
 	if(!XFixesQueryExtension(x_display, &x_fixes_event_base, &x_fixes_error_base)) {
 		fprintf(stderr, "Your x11 server is missing the xfixes extension\n");
@@ -960,6 +982,19 @@ bool CMainApplication::HandleInput()
 		if(cursor_notify_event->subtype == XFixesDisplayCursorNotify && cursor_notify_event->window == src_window_id) {
 			cursor_image_set = true;
 			SetCursorFromX11CursorImage(XFixesGetCursorImage(x_display));
+		}
+	}
+
+	if (XCheckTypedEvent(x_display, KeyPress, &xev) && XKeycodeToKeysym(x_display, xev.xkey.keycode, 0) == XK_F1 && (xev.xkey.state & Mod1Mask)) {
+		m_bResetRotation = true;
+	}
+
+	if(XCheckTypedEvent(x_display, MappingNotify, &xev)) {
+		XMappingEvent *mapping_ev = &xev.xmapping;
+		XRefreshKeyboardMapping(mapping_ev);
+		if(mapping_ev->request == MappingKeyboard) {
+			fprintf(stderr, "Update keyboard mapping!\n");
+			grabkeys(x_display);
 		}
 	}
 

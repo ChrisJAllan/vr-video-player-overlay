@@ -6,3 +6,4 @@ tests/compile_commands.json
 vr-video-player
 window_texture.o
 main.o
+.clangd/
