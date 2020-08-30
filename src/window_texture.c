@@ -61,13 +61,13 @@ int window_texture_on_resize(WindowTexture *self) {
     int glx_pixmap_bound = 0;
 
     const int pixmap_config[] = {
-        GLX_BIND_TO_TEXTURE_RGBA_EXT, True,
+        GLX_BIND_TO_TEXTURE_RGB_EXT, True,
         GLX_DRAWABLE_TYPE, GLX_PIXMAP_BIT | GLX_WINDOW_BIT,
         GLX_BIND_TO_TEXTURE_TARGETS_EXT, GLX_TEXTURE_2D_BIT_EXT,
         /*GLX_BIND_TO_MIPMAP_TEXTURE_EXT, True,*/
         GLX_DOUBLEBUFFER, False,
         GLX_BUFFER_SIZE, 32,
-        GLX_ALPHA_SIZE, 8,
+        GLX_ALPHA_SIZE, 0,
         None
     };
 
