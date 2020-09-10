@@ -62,3 +62,6 @@ For games that do not have built-in side-by-side view, you can use [ReShade](htt
 
 # SteamVR issues
 SteamVR on linux has several issues. For example if you launch vr-video-player it may get stuck with a "Next up" window inside vr. If that is the case, then close SteamVR and make sure all SteamVR are dead (kill them if they aren't) and launch vr-video-player and it should launch SteamVR (this is different than launching the SteamVR application in steam).
+
+# Screenshots
+![](https://www.dec05eba.com/images/vr-video-player.jpg)
