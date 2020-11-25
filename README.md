@@ -1,7 +1,6 @@
 A virtual reality video player for Linux running X11, based on Valve's openvr `hellovr_opengl` sample code: https://github.com/ValveSoftware/openvr/tree/master/samples
-Still early in development, not very user friendly.
 
-Currently only works with stereo video when used for vr videos, but if the vr video player is launched with the `--plane` option then you can view
+Currently only works with stereo video and equirectangular cube maps (youtube 360 videos) when used for vr videos, but if the vr video player is launched with the `--plane` option then you can view
 the video as a regular video in vr without depth (like a cinema).
 
 # Building
@@ -35,6 +34,12 @@ if you want to watch a regular non-stereoscopic video, then run:
 ```
 and click on your video player.
 
+if you want to watch a 360 video (for example a youtube video), then run:
+```
+./vr-video-player --sphere360 $(xdotool selectwindow)
+```
+and click on your video player.
+
 The video might not be in front of you, so to move the video in front of you, you can do any of the following:
 * Pull the trigger on the vr controller
 * Press "Alt + F1"
@@ -52,7 +57,8 @@ Note: If the cursor position is weird and does not match what you are seeing in 
 game which is normally at the center moves to 1/4 and 3/4 of the window. With --cursor-wrap, the cursor position in VR will match the real position of the
 cursor relative to the window and with --no-cursor-wrap the cursor will match the position of the cursor as the game sees it.
 
-Note: --cursor-scale is set to 0 by default in 180 degrees stereoscopic mode and 2 in other modes. Also --no-cursor-wrap is set by default in --flat mode.
+Note: --cursor-scale is set to 0 by default in 180 degrees stereoscopic mode and 2 in other modes. Also --no-cursor-wrap is set by default in --flat mode.\
+Note: When fullscreening a video, the video player can add black bars to the top and bottom. If you do not want black blacks then you either have to view the video in windowed mode or try launching mpv with the `--panscan=1.0` option.
 
 # Games
 This vr video player can also be used to play games in VR to to get a 3D effect, and even for games that don't support VR.\

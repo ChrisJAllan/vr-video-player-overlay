@@ -102,7 +102,6 @@ public:
 
 	void SetupScene();
 	void AddCubeToScene( const glm::mat4 &mat, std::vector<float> &vertdata );
-	void AddCubeVertex( float fl0, float fl1, float fl2, float fl3, float fl4, std::vector<float> &vertdata );
 
 	bool SetupStereoRenderTargets();
 	void SetupCompanionWindow();
@@ -259,13 +258,15 @@ private: // X compositor
 	enum class ViewMode {
 		LEFT_RIGHT,
 		RIGHT_LEFT,
-		PLANE
+		PLANE,
+		SPHERE360
 	};
 
 	enum class ProjectionMode {
 		SPHERE,
 		FLAT,
-		CYLINDER
+		CYLINDER, /* aka plane */
+		SPHERE360
 	};
 
 	ProjectionMode projection_mode = ProjectionMode::SPHERE;
@@ -373,18 +374,19 @@ void dprintf( const char *fmt, ... )
 }
 
 static void usage() {
-	fprintf(stderr, "usage: vr-video-player [--sphere] [--flat] [--left-right|--right-left|--plane] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] [--cursor-wrap|--no-cursor-wrap] <window_id>\n");
+	fprintf(stderr, "usage: vr-video-player [--sphere|--sphere360|--flat|--plane] [--left-right|--right-left] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] [--cursor-wrap|--no-cursor-wrap] <window_id>\n");
     fprintf(stderr, "\n");
 	fprintf(stderr, "OPTIONS\n");
-    fprintf(stderr, "  --sphere          View the window as a stereoscopic 180 degrees screen (half sphere). The view will be attached to your head in vr. This is recommended for 180 degrees videos. This option conflicts with the --flat and --plane options. This is the default value\n");
-	fprintf(stderr, "  --flat            View the window as a stereoscopic flat screen. This is recommended for stereoscopic videos and games. This option conflicts with the --sphere and --plane options\n");
+    fprintf(stderr, "  --sphere          View the window as a stereoscopic 180 degrees screen (half sphere). The view will be attached to your head in vr. This is recommended for 180 degrees videos. This is the default value\n");
+	fprintf(stderr, "  --sphere360       View the window as an equirectangular cube map. This is what is mostly used on youtube, where the video is split into top and bottom as a cubemap. The view will be attached to your head in vr\n");
+	fprintf(stderr, "  --flat            View the window as a stereoscopic flat screen. This is recommended for stereoscopic videos and games\n");
     fprintf(stderr, "  --left-right      This option is used together with --flat, to specify if the left side of the window is meant to be viewed with the left eye and the right side is meant to be viewed by the right eye. This is the default value\n");
     fprintf(stderr, "  --right-left      This option is used together with --flat, to specify if the left side of the window is meant to be viewed with the right eye and the right side is meant to be viewed by the left eye\n");
-    fprintf(stderr, "  --plane           View the window as a slightly curved screen. This is recommended for non-stereoscopic content. This option conflicts with the --sphere and --flat options\n");
+    fprintf(stderr, "  --plane           View the window as a slightly curved screen. This is recommended for non-stereoscopic content\n");
     fprintf(stderr, "  --stretch         This option is used together with --flat, To specify if the size of both sides of the window should be combined and stretch to that size when viewed in vr. This is the default value\n");
     fprintf(stderr, "  --no-stretch      This option is used together with --flat, To specify if the size of one side of the window should be the size of the whole window when viewed in vr. This is the option you want if the window looks too wide\n");
-    fprintf(stderr, "  --zoom            Change the distance to the window. This should be a positive value. In flat and plane modes, this is the distance to the window when the window is reset (with W key or controller trigger button). The default value is 0 for all modes except sphere mode, where the default value is 1\n");
-    fprintf(stderr, "  --cursor-scale    Change the size of the cursor. This should be a positive value. If set to 0, then the cursor is hidden. The default value is 1 for all modes except sphere mode, where the default value is 0\n");
+    fprintf(stderr, "  --zoom            Change the distance to the window. This should be a positive value. In flat and plane modes, this is the distance to the window when the window is reset (with W key or controller trigger button). The default value is 0 for all modes except sphere mode, where the default value is 1. This value is unused for sphere360 mode\n");
+    fprintf(stderr, "  --cursor-scale    Change the size of the cursor. This should be a positive value. If set to 0, then the cursor is hidden. The default value is 1 for all modes except sphere mode, where the default value is 0. The cursor is always hidden in sphere360 mode\n");
     fprintf(stderr, "  --cursor-wrap     If this option is set, then the cursor position in the vr view will wrap around when it reached the center of the window (i.e when it reaches the edge of one side of the stereoscopic view). This option is only valid for stereoscopic view (flat and sphere modes)\n");
     fprintf(stderr, "  --no-cursor-wrap  If this option is set, then the cursor position in the vr view will match the the real cursor position inside the window\n");
     fprintf(stderr, "  window_id         The X11 window id of the window to view in vr. This option is required\n");
@@ -487,6 +489,19 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 			projection_mode = ProjectionMode::CYLINDER;
 			projection_arg = argv[i];
 			view_mode_arg = argv[i];
+		} else if(strcmp(argv[i], "--sphere360") == 0) {
+			if(projection_arg) {
+				fprintf(stderr, "Error: --sphere360 option can't be used together with the %s option\n", projection_arg);
+				exit(1);
+			}
+			if(view_mode_arg) {
+				fprintf(stderr, "Error: --sphere360 option can't be used together with the %s option\n", view_mode_arg);
+				exit(1);
+			}
+			view_mode = ViewMode::SPHERE360;
+			projection_mode = ProjectionMode::SPHERE360;
+			projection_arg = argv[i];
+			view_mode_arg = argv[i];
 		} else if(strcmp(argv[i], "--stretch") == 0) {
 			stretch = true;
 		} else if(strcmp(argv[i], "--no-stretch") == 0) {
@@ -517,12 +532,17 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 		zoom = 1.0;
 	}
 
-	if(cursor_scale < 0.01f || (!cursor_scale_set && projection_mode == ProjectionMode::SPHERE)) {
-		cursor_scale = 0.01f;
+	if(cursor_scale < 0.001f || (!cursor_scale_set && projection_mode == ProjectionMode::SPHERE)) {
+		cursor_scale = 0.001f;
 	}
 
 	if(!cursor_wrap_set && projection_mode == ProjectionMode::FLAT) {
 		cursor_wrap = false;
+	}
+
+	if(projection_mode == ProjectionMode::SPHERE360) {
+		zoom = 0.0f;
+		cursor_scale = 0.001f;
 	}
 
 	printf("src window id: %ld, zoom: %f\n", src_window_id, zoom);
@@ -787,6 +807,8 @@ bool CMainApplication::BInitGL()
 	if( !CreateAllShaders() )
 		return false;
 
+	//glEnable(GL_CULL_FACE);
+
 	glUseProgram( m_unSceneProgramID );
 
 	//glActiveTexture(GL_TEXTURE0);
@@ -944,7 +966,10 @@ bool CMainApplication::HandleInput()
 			}
 			if( sdlEvent.key.keysym.sym == SDLK_q )
 			{
-				zoom -= 0.01f;
+				if(projection_mode == ProjectionMode::SPHERE360)
+					zoom -= 1.0f;
+				else
+					zoom -= 0.01f;
 				zoom_resize = true;
 
 				std::stringstream strstr;
@@ -954,7 +979,10 @@ bool CMainApplication::HandleInput()
 			}
 			if( sdlEvent.key.keysym.sym == SDLK_e )
 			{
-				zoom += 0.01f;
+				if(projection_mode == ProjectionMode::SPHERE360)
+					zoom += 1.0f;
+				else
+					zoom += 0.01f;
 				zoom_resize = true;
 
 				std::stringstream strstr;
@@ -1047,7 +1075,7 @@ bool CMainApplication::HandleInput()
 		m_reset_rotation = glm::inverse(hmd_rot);
 	}
 
-	if(projection_mode == ProjectionMode::SPHERE) {
+	if(projection_mode == ProjectionMode::SPHERE || projection_mode == ProjectionMode::SPHERE360) {
 		hmd_pos = current_pos;
 	}
 
@@ -1320,7 +1348,7 @@ bool CMainApplication::CreateAllShaders()
 		"	vec2 arrow_coord = (arrow_size_frag - cursor_diff) / arrow_size_frag;\n"
 		"	vec4 arrow_col = texture(arrow_texture, arrow_coord);\n"
 		"	vec4 col = texture(mytexture, v2UVcoords);\n"
-		"	if(arrow_size_frag.x < 0.001 || arrow_size_frag.y < 0.001 || arrow_coord.x < 0.0 || arrow_coord.x > 1.0 || arrow_coord.y < 0.0 || arrow_coord.y > 1.0) arrow_col.a = 0.0;\n"
+		"	if(arrow_size_frag.x < 0.01 || arrow_size_frag.y < 0.01 || arrow_coord.x < 0.0 || arrow_coord.x > 1.0 || arrow_coord.y < 0.0 || arrow_coord.y > 1.0) arrow_col.a = 0.0;\n"
 		"	outputColor = mix(col, arrow_col.bgra, arrow_col.a);\n"
 		"}\n"
 		);
@@ -1518,16 +1546,107 @@ void CMainApplication::SetupScene()
 }
 
 
-//-----------------------------------------------------------------------------
-// Purpose:
-//-----------------------------------------------------------------------------
-void CMainApplication::AddCubeVertex( float x, float y, float z, float u, float v, std::vector<float> &vertdata )
+static void AddCubeVertex( float x, float y, float z, float u, float v, std::vector<float> &vertdata )
 {
 	vertdata.push_back( x );
 	vertdata.push_back( y );
 	vertdata.push_back( z );
 	vertdata.push_back( u );
 	vertdata.push_back( v );
+}
+
+static void CreateSegmentedPlane(std::vector<float> &vertdata, float width, float height, float depth, float texture_width, float texture_height, float texture_offset_x, float texture_offset_y, int num_columns, int num_rows) {
+	#if 0
+	float segment_width = width / (float)num_columns;
+	float segment_height = height / (float)num_rows;
+	float segment_texture_width = texture_width / (float)num_columns;
+	float segment_texture_height = texture_height / (float)num_rows;
+	for(int y = 0; y < num_rows; ++y) {
+		float segment_height_offset = segment_height * (float)y;
+		float segment_texture_height_offset = segment_texture_height * (float)y;
+		for(int x = 0; x < num_columns; ++x) {
+			float segment_width_offset = segment_width * (float)x;
+			float segment_texture_width_offset = segment_texture_width * (float)x;
+			//segment_texture_width_offset = 0.0f;
+			//segment_texture_height_offset = 0.0f;
+			//segment_texture_width = texture_width;
+			//segment_texture_height = texture_height;
+			// AddCubeVertex(segment_width_offset + -segment_width, 	segment_height_offset +  segment_height, zoom, segment_texture_width_offset + texture_offset_x + segment_texture_width, 	segment_texture_height_offset + texture_offset_y, 							vertdata);
+			// AddCubeVertex(segment_width_offset + segment_width, 	segment_height_offset +  segment_height, zoom, segment_texture_width_offset + texture_offset_x, 							segment_texture_height_offset + texture_offset_y, 							vertdata);
+			// AddCubeVertex(segment_width_offset + -segment_width, 	segment_height_offset + -segment_height, zoom, segment_texture_width_offset + texture_offset_x + segment_texture_width, 	segment_texture_height_offset + texture_offset_y + segment_texture_height, 	vertdata);
+
+			// AddCubeVertex(segment_width_offset + -segment_width, 	segment_height_offset + -segment_height, zoom, segment_texture_width_offset + texture_offset_x + segment_texture_width, 	segment_texture_height_offset + texture_offset_y + segment_texture_height, 	vertdata);
+			// AddCubeVertex(segment_width_offset + segment_width, 	segment_height_offset + -segment_height, zoom, segment_texture_width_offset + texture_offset_x, 							segment_texture_height_offset + texture_offset_y + segment_texture_height, 	vertdata);
+			// AddCubeVertex(segment_width_offset + segment_width, 	segment_height_offset +  segment_height, zoom, segment_texture_width_offset + texture_offset_x, 							segment_texture_height_offset + texture_offset_y, 							vertdata);
+		}
+	}
+	#endif
+	float segment_width = width / (float)num_columns;
+	float segment_height = height / (float)num_rows;
+	float segment_texture_width = texture_width / (float)num_columns;
+	float segment_texture_height = texture_height / (float)num_rows;
+
+	for(int y = 0; y < num_rows; ++y) {
+		float segment_height_offset = height - segment_height * 2.0f * (float)y;
+		float segment_texture_height_offset = segment_texture_height * (float)y;
+		for(int x = 0; x < num_columns; ++x) {
+			float segment_width_offset = width - segment_width * 2.0f * (float)x;
+			float segment_texture_width_offset = segment_texture_width * (float)x;
+
+			AddCubeVertex(segment_width_offset, segment_height_offset, depth, segment_texture_width_offset + texture_offset_x, segment_texture_height_offset + texture_offset_y, vertdata);
+			AddCubeVertex(segment_width_offset - segment_width*2.0f, segment_height_offset, depth, segment_texture_width_offset + texture_offset_x + segment_texture_width, segment_texture_height_offset + texture_offset_y, vertdata);
+			AddCubeVertex(segment_width_offset - segment_width*2.0f, segment_height_offset - segment_height*2.0f, depth, segment_texture_width_offset + texture_offset_x + segment_texture_width, segment_texture_height_offset + texture_offset_y + segment_texture_height, vertdata);
+
+			AddCubeVertex(segment_width_offset - segment_width*2.0f, segment_height_offset - segment_height*2.0f, depth, segment_texture_width_offset + texture_offset_x + segment_texture_width, segment_texture_height_offset + texture_offset_y + segment_texture_height, vertdata);
+			AddCubeVertex(segment_width_offset, segment_height_offset - segment_height*2.0f, depth, segment_texture_width_offset + texture_offset_x, segment_texture_height_offset + texture_offset_y + segment_texture_height, vertdata);
+			AddCubeVertex(segment_width_offset, segment_height_offset, depth, segment_texture_width_offset + texture_offset_x, segment_texture_height_offset + texture_offset_y, vertdata);
+		}
+	}
+}
+
+static glm::vec3 vertex_get_center(glm::mat3 vertex) {
+	return glm::vec3(
+		(vertex[0].x + vertex[1].x + vertex[2].x) / 3.0f,
+		(vertex[0].y + vertex[1].y + vertex[2].y) / 3.0f,
+		(vertex[0].z + vertex[1].z + vertex[2].z) / 3.0f
+	);
+}
+
+static void plane_normalize_depth(float *vertices, size_t num_vertices, float depth) {
+	for(size_t i = 0; i < num_vertices; ++i) {
+		float *vertex_data = &vertices[i * 5];
+		float dist = sqrtf(vertex_data[0]*vertex_data[0] + vertex_data[1]*vertex_data[1] + vertex_data[2]*vertex_data[2]);
+		vertex_data[0] = vertex_data[0]/dist * depth;
+		vertex_data[1] = vertex_data[1]/dist * depth;
+		vertex_data[2] = vertex_data[2]/dist * depth;
+	}
+}
+
+static void vertices_rotate(float *vertices, size_t num_vertices, float angle, glm::vec3 rotation_axis) {
+	for(size_t i = 0; i < num_vertices - 2; i += 3) {
+		float *vertex_data1 = &vertices[(i + 0) * 5];
+		float *vertex_data2 = &vertices[(i + 1) * 5];
+		float *vertex_data3 = &vertices[(i + 2) * 5];
+		glm::quat quatRot = glm::angleAxis(angle, rotation_axis);
+		glm::mat4x4 matRot = glm::mat4_cast(quatRot);
+		glm::vec3 &vec1 = *(glm::vec3*)vertex_data1;
+		glm::vec3 &vec2 = *(glm::vec3*)vertex_data2;
+		glm::vec3 &vec3 = *(glm::vec3*)vertex_data3;
+		glm::vec3 center = vertex_get_center(glm::mat3(vec1, vec2, vec3));
+
+		vec1 -= center;
+		vec2 -= center;
+		vec3 -= center;
+
+		glm::mat4 tran = glm::translate(matRot, center);
+
+		glm::vec4 out1 = tran * glm::vec4(vec1.x, vec1.y, vec1.z, 1.0f);
+		glm::vec4 out2 = tran * glm::vec4(vec2.x, vec2.y, vec2.z, 1.0f);
+		glm::vec4 out3 = tran * glm::vec4(vec3.x, vec3.y, vec3.z, 1.0f);
+		vec1 = glm::vec3(out1.x, out1.y, out1.z);
+		vec2 = glm::vec3(out2.x, out2.y, out2.z);
+		vec3 = glm::vec3(out3.x, out3.y, out3.z);
+	}
 }
 
 
@@ -1549,6 +1668,11 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 
 	double width_ratio = (double)pixmap_texture_width / (double)pixmap_texture_height;
 	arrow_ratio = width_ratio;
+
+	Window root_window;
+	int x_return, y_return;
+	unsigned int width_return, height_return, border_width_return = 0, depth_return;
+	XGetGeometry(x_display, src_window_id, &root_window, &x_return, &y_return, &width_return, &height_return, &border_width_return, &depth_return);
 
 	if(projection_mode == ProjectionMode::SPHERE)
 	{
@@ -1694,6 +1818,38 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 
 		if(stretch)
 			arrow_ratio = width_ratio * 2.0;
+	} else if (projection_mode == ProjectionMode::SPHERE360) {
+		double px = (double)border_width_return / (double)pixmap_texture_width;
+		double py = (double)border_width_return / (double)pixmap_texture_height;
+
+		double width = 1.0 - px * 2.0;
+		double height = 1.0 - py * 2.0;
+
+		double hz = zoom / (double)pixmap_texture_height;
+
+		double texture_width = width / 3.0;
+		double texture_height = height * 0.5;
+
+		for(int i = 0; i < 3; ++i) {
+			size_t plane_vertices_start = vertdata.size();
+			CreateSegmentedPlane(vertdata, 1.0f, 1.0f, 1.0f, texture_width, texture_height - hz, texture_width * (2 - i) + px, py + hz, 32, 32);
+			size_t plane_vertices_end = vertdata.size();
+			size_t num_vertex_data = (plane_vertices_end - plane_vertices_start) / 5;
+
+			plane_normalize_depth(&vertdata[plane_vertices_start], num_vertex_data, 1.0f);
+			vertices_rotate(&vertdata[plane_vertices_start], num_vertex_data, -glm::half_pi<float>() + i * glm::half_pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+		}
+
+		for(int i = 0; i < 3; ++i) {
+			size_t plane_vertices_start = vertdata.size();
+			CreateSegmentedPlane(vertdata, 1.0f, 1.0f, 1.0f, texture_width, texture_height - hz, px + texture_width * i, 0.5f, 32, 32);
+			size_t plane_vertices_end = vertdata.size();
+			size_t num_vertex_data = (plane_vertices_end - plane_vertices_start) / 5;
+
+			plane_normalize_depth(&vertdata[plane_vertices_start], num_vertex_data, 1.0f);
+			vertices_rotate(&vertdata[plane_vertices_start], num_vertex_data, -glm::half_pi<float>(), glm::vec3(0.0f, 0.0f, 1.0f));
+			vertices_rotate(&vertdata[plane_vertices_start], num_vertex_data, -glm::half_pi<float>() - i * glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+		}
 	}
 
 	cursor_scale_uniform[0] = 0.01 * cursor_scale;
@@ -1905,7 +2061,7 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 		float scale = 0.5f;
 		if(view_mode == ViewMode::RIGHT_LEFT) {
 			offset = 0.5f;
-		} else if(view_mode == ViewMode::PLANE) {
+		} else if(view_mode == ViewMode::PLANE || view_mode == ViewMode::SPHERE360) {
 			offset = 0.0f;
 			scale = 1.0f;
 		}
@@ -1921,7 +2077,7 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 		float scale = 0.5f;
 		if (view_mode == ViewMode::RIGHT_LEFT) {
 			offset = 0.0f;
-		} else if (view_mode == ViewMode::PLANE) {
+		} else if (view_mode == ViewMode::PLANE || view_mode == ViewMode::SPHERE360) {
 			offset = 0.0f;
 			scale = 1.0f;
 		}
