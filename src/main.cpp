@@ -677,6 +677,8 @@ bool CMainApplication::BInit()
 		return false;
 	}
 
+	auto standing_pos = m_pHMD->GetSeatedZeroPoseToStandingAbsoluteTrackingPose();
+	hmd_pos += glm::vec3(standing_pos.m[0][3], standing_pos.m[1][3], standing_pos.m[2][3]);
 
 	int nWindowPosX = 700;
 	int nWindowPosY = 100;
@@ -2266,6 +2268,7 @@ void CMainApplication::UpdateHMDMatrixPose()
 
 				glm::mat4 *mat = (glm::mat4*)&m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking;
 				hmd_rot = glm::quat_cast(*mat);
+			
 				m_rDevClassChar[nDevice] = 'H';
 				break;
 			}
