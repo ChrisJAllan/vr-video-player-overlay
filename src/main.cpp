@@ -122,6 +122,8 @@ public:
 	bool CreateAllShaders();
 
 	bool SetCursorFromX11CursorImage(XFixesCursorImage *x11_cursor_image);
+	// Get focused window or None
+	Window get_focused_window();
 
 private: 
 	bool m_bDebugOpenGL;
@@ -239,15 +241,19 @@ private: // OpenGL bookkeeping
 
 private: // X compositor
 	Display *x_display = nullptr;
+	Atom net_active_window_atom;
 	Window src_window_id = None;
 	WindowTexture window_texture;
+	bool follow_focused = false;
+	bool focused_window_changed = true;
+	bool focused_window_set = false;
 
 	int mouse_x;
 	int mouse_y;
 	int window_width;
 	int window_height;
 	Uint32 window_resize_time;
-	bool window_resized;
+	bool window_resized = false;
 
 	int x_fixes_event_base;
 	int x_fixes_error_base;
@@ -374,7 +380,7 @@ void dprintf( const char *fmt, ... )
 }
 
 static void usage() {
-	fprintf(stderr, "usage: vr-video-player [--sphere|--sphere360|--flat|--plane] [--left-right|--right-left] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] [--cursor-wrap|--no-cursor-wrap] <window_id>\n");
+	fprintf(stderr, "usage: vr-video-player [--sphere|--sphere360|--flat|--plane] [--left-right|--right-left] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] [--cursor-wrap|--no-cursor-wrap] [--follow-focused] <window_id>\n");
     fprintf(stderr, "\n");
 	fprintf(stderr, "OPTIONS\n");
     fprintf(stderr, "  --sphere          View the window as a stereoscopic 180 degrees screen (half sphere). The view will be attached to your head in vr. This is recommended for 180 degrees videos. This is the default value\n");
@@ -389,7 +395,8 @@ static void usage() {
     fprintf(stderr, "  --cursor-scale    Change the size of the cursor. This should be a positive value. If set to 0, then the cursor is hidden. The default value is 1 for all modes except sphere mode, where the default value is 0. The cursor is always hidden in sphere360 mode\n");
     fprintf(stderr, "  --cursor-wrap     If this option is set, then the cursor position in the vr view will wrap around when it reached the center of the window (i.e when it reaches the edge of one side of the stereoscopic view). This option is only valid for stereoscopic view (flat and sphere modes)\n");
     fprintf(stderr, "  --no-cursor-wrap  If this option is set, then the cursor position in the vr view will match the the real cursor position inside the window\n");
-    fprintf(stderr, "  window_id         The X11 window id of the window to view in vr. This option is required\n");
+	fprintf(stderr, "  --follow-focused  If this option is set, then the selected window will be the focused window. vr-video-player will automatically update when the focused window changes. Either this option or window_id should be used\n");
+    fprintf(stderr, "  window_id         The X11 window id of the window to view in vr. This option or --follow-focused is required\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "EXAMPLES\n");
     fprintf(stderr, "  vr-video-player 1830423\n");
@@ -512,10 +519,20 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 		} else if(strcmp(argv[i], "--no-cursor-wrap") == 0) {
 			cursor_wrap = false;
 			cursor_wrap_set = true;
+		} else if(strcmp(argv[i], "--follow-focused") == 0) {
+			if(src_window_id) {
+				fprintf(stderr, "Error: --follow-focused option can't be used together with the window_id option\n");
+				exit(1);
+			}
+			follow_focused = true;
 		} else if(argv[i][0] == '-') {
 			fprintf(stderr, "Invalid flag: %s\n", argv[i]);
 			usage();
 		} else {
+			if(follow_focused) {
+				fprintf(stderr, "Error: window_id option can't be used together with the --follow-focused option\n");
+				exit(1);
+			}
 			if (strncmp(argv[i], "window:", 7) == 0) {
 				argv[i] += 7; // "window:".length
 			}
@@ -523,7 +540,7 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 		}
 	}
 
-	if(src_window_id == None) {
+	if(src_window_id == None && !follow_focused) {
 		fprintf(stderr, "Missing required window_id flag\n");
 		usage();
 	}
@@ -544,8 +561,6 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 		zoom = 0.0f;
 		cursor_scale = 0.001f;
 	}
-
-	printf("src window id: %ld, zoom: %f\n", src_window_id, zoom);
 
 	// other initialization tasks are done in BInit
 	memset(m_rDevClassChar, 0, sizeof(m_rDevClassChar));
@@ -587,19 +602,19 @@ std::string GetTrackedDeviceString( vr::TrackedDeviceIndex_t unDevice, vr::Track
 }
 
 static int xerror(Display *dpy, XErrorEvent *ee) {
-    if (ee->error_code == BadWindow
-    || (ee->request_code == X_SetInputFocus && ee->error_code == BadMatch)
-    || (ee->request_code == X_PolyText8 && ee->error_code == BadDrawable)
-    || (ee->request_code == X_PolyFillRectangle && ee->error_code == BadDrawable)
-    || (ee->request_code == X_PolySegment && ee->error_code == BadDrawable)
-    || (ee->request_code == X_ConfigureWindow && ee->error_code == BadMatch)
-    || (ee->request_code == X_GrabButton && ee->error_code == BadAccess)
-    || (ee->request_code == X_GrabKey && ee->error_code == BadAccess)
-    || (ee->request_code == X_CopyArea && ee->error_code == BadDrawable)
-    || (ee->request_code == X_GLXCreatePixmap && ee->error_code == BadMatch))
-        return 0;
-    fprintf(stderr, "vrwm: fatal error: request code=%d, error code=%d\n",
-        ee->request_code, ee->error_code);
+    //if (ee->error_code == BadWindow
+    //|| (ee->request_code == X_SetInputFocus && ee->error_code == BadMatch)
+    //|| (ee->request_code == X_PolyText8 && ee->error_code == BadDrawable)
+    //|| (ee->request_code == X_PolyFillRectangle && ee->error_code == BadDrawable)
+    //|| (ee->request_code == X_PolySegment && ee->error_code == BadDrawable)
+    //|| (ee->request_code == X_ConfigureWindow && ee->error_code == BadMatch)
+    //|| (ee->request_code == X_GrabButton && ee->error_code == BadAccess)
+    //|| (ee->request_code == X_GrabKey && ee->error_code == BadAccess)
+    //|| (ee->request_code == X_CopyArea && ee->error_code == BadDrawable)
+    //|| (ee->request_code == X_GLXCreatePixmap && ee->error_code == BadMatch))
+    //    return 0;
+    //fprintf(stderr, "vr-video-player: fatal error: request code=%d, error code=%d\n",
+    //    ee->request_code, ee->error_code);
     return 0; /* may call exit */ /* TODO: xerrorxlib(dpy, ee); */
 }
 
@@ -636,27 +651,24 @@ bool CMainApplication::BInit()
 
 	XSetErrorHandler(xerror);
 
-	XWindowAttributes xwa;
-	if(!XGetWindowAttributes(x_display, src_window_id, &xwa)) {
-		fprintf(stderr, "Error: Invalid window id: %lud\n", src_window_id);
+	net_active_window_atom = XInternAtom(x_display, "_NET_ACTIVE_WINDOW", False);
+	if(!net_active_window_atom) {
+		fprintf(stderr, "Failed to get _NET_ACTIVE_WINDOW atom\n");
 		return false;
 	}
-	window_width = xwa.width;
-	window_height = xwa.height;
-	window_resize_time = SDL_GetTicks();
-	window_resized = false;
-
-	grabkeys(x_display);
-	XSelectInput(x_display, src_window_id, StructureNotifyMask|KeyPressMask|KeyReleaseMask);
-	Bool sup = False;
-	XkbSetDetectableAutoRepeat(x_display, True, &sup);
 
 	if(!XFixesQueryExtension(x_display, &x_fixes_event_base, &x_fixes_error_base)) {
 		fprintf(stderr, "Your x11 server is missing the xfixes extension\n");
 		return false;
 	}
 
-	XFixesSelectCursorInput(x_display, src_window_id, XFixesDisplayCursorNotifyMask);
+	grabkeys(x_display);
+
+	if(follow_focused)
+		XSelectInput(x_display, DefaultRootWindow(x_display), PropertyChangeMask);
+
+	Bool sup = False;
+	XkbSetDetectableAutoRepeat(x_display, True, &sup);
 
 	if ( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_JOYSTICK ) < 0 )
 	{
@@ -814,15 +826,6 @@ bool CMainApplication::BInitGL()
 	glUseProgram( m_unSceneProgramID );
 
 	//glActiveTexture(GL_TEXTURE0);
-	if(window_texture_init(&window_texture, x_display, src_window_id) != 0)
-		return false;
-
-	pixmap_texture_width = 0;
-	pixmap_texture_height = 0;
-	glBindTexture(GL_TEXTURE_2D, window_texture_get_opengl_texture_id(&window_texture));
-	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &pixmap_texture_width);
-	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &pixmap_texture_height);
-	glBindTexture(GL_TEXTURE_2D, 0);
 
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -975,7 +978,10 @@ bool CMainApplication::HandleInput()
 				zoom_resize = true;
 
 				std::stringstream strstr;
-				strstr << "/tmp/vr-video-player_" << src_window_id;
+				if(follow_focused)
+					strstr << "/tmp/vr-video-player_focused";
+				else
+					strstr << "/tmp/vr-video-player_" << src_window_id;
 				std::ofstream zoomstate(strstr.str());
 				zoomstate << zoom;
 			}
@@ -988,7 +994,10 @@ bool CMainApplication::HandleInput()
 				zoom_resize = true;
 
 				std::stringstream strstr;
-				strstr << "/tmp/vr-video-player_" << src_window_id;
+				if(follow_focused)
+					strstr << "/tmp/vr-video-player_focused";
+				else
+					strstr << "/tmp/vr-video-player_" << src_window_id;
 				std::ofstream zoomstate(strstr.str());
 				zoomstate << zoom;
 			}
@@ -997,21 +1006,33 @@ bool CMainApplication::HandleInput()
 
 	XEvent xev;
 
-	if (XCheckTypedWindowEvent(x_display, src_window_id, ConfigureNotify, &xev) && xev.xconfigure.window == src_window_id) {
-		// Window resize
-		if(xev.xconfigure.width != window_width || xev.xconfigure.height != window_height) {
-			window_width = xev.xconfigure.width;
-			window_height = xev.xconfigure.height;
-			window_resize_time = SDL_GetTicks();
-			window_resized = true;
+	if(follow_focused && ((XCheckTypedWindowEvent(x_display, DefaultRootWindow(x_display), PropertyNotify, &xev) && xev.xproperty.atom == net_active_window_atom) || !focused_window_set)) {
+		focused_window_set = true;
+		Window focused_window = get_focused_window();
+		if(focused_window && focused_window != src_window_id) {
+			fprintf(stderr, "Window focus changed to window %ld\n", focused_window);
+			src_window_id = focused_window;
+			focused_window_changed = true;
 		}
 	}
 
-	if(XCheckTypedWindowEvent(x_display, src_window_id, x_fixes_event_base + XFixesCursorNotify, &xev)) {
-		XFixesCursorNotifyEvent *cursor_notify_event = (XFixesCursorNotifyEvent*)&xev;
-		if(cursor_notify_event->subtype == XFixesDisplayCursorNotify && cursor_notify_event->window == src_window_id) {
-			cursor_image_set = true;
-			SetCursorFromX11CursorImage(XFixesGetCursorImage(x_display));
+	if(src_window_id) {
+		if (XCheckTypedWindowEvent(x_display, src_window_id, ConfigureNotify, &xev) && xev.xconfigure.window == src_window_id) {
+			// Window resize
+			if(xev.xconfigure.width != window_width || xev.xconfigure.height != window_height) {
+				window_width = xev.xconfigure.width;
+				window_height = xev.xconfigure.height;
+				window_resize_time = SDL_GetTicks();
+				window_resized = true;
+			}
+		}
+
+		if(XCheckTypedWindowEvent(x_display, src_window_id, x_fixes_event_base + XFixesCursorNotify, &xev)) {
+			XFixesCursorNotifyEvent *cursor_notify_event = (XFixesCursorNotifyEvent*)&xev;
+			if(cursor_notify_event->subtype == XFixesDisplayCursorNotify && cursor_notify_event->window == src_window_id) {
+				cursor_image_set = true;
+				SetCursorFromX11CursorImage(XFixesGetCursorImage(x_display));
+			}
 		}
 	}
 
@@ -1033,26 +1054,45 @@ bool CMainApplication::HandleInput()
 		SetCursorFromX11CursorImage(XFixesGetCursorImage(x_display));
 	}
 
-	Window dummyW;
-	int dummyI;
-	unsigned int dummyU;
-	XQueryPointer(x_display, src_window_id, &dummyW, &dummyW,
-				&dummyI, &dummyI, &mouse_x, &mouse_y, &dummyU);
-
 	Uint32 time_now = SDL_GetTicks();
 	const int window_resize_timeout = 500; /* 0.5 seconds */
-	if(window_resized && time_now - window_resize_time >= window_resize_timeout) {
+	if((focused_window_changed && src_window_id) || (window_resized && time_now - window_resize_time >= window_resize_timeout)) {
+		XWindowAttributes xwa;
+		if(!XGetWindowAttributes(x_display, src_window_id, &xwa)) {
+			fprintf(stderr, "Error: Invalid window id: %lud\n", src_window_id);
+		}
+		window_width = xwa.width;
+		window_height = xwa.height;
+		window_resize_time = SDL_GetTicks();
 		window_resized = false;
+
+		XSelectInput(x_display, src_window_id, StructureNotifyMask|KeyPressMask|KeyReleaseMask);
+		XFixesSelectCursorInput(x_display, src_window_id, XFixesDisplayCursorNotifyMask);
+
+		focused_window_changed = false;
+		window_resized = false;
+		window_texture_deinit(&window_texture);
+		if(window_texture_init(&window_texture, x_display, src_window_id) != 0) {
+			fprintf(stderr, "Failed to init texture\n");
+			//return false;
+		}
 		window_texture_on_resize(&window_texture);
 		glBindTexture(GL_TEXTURE_2D, window_texture_get_opengl_texture_id(&window_texture));
 		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &pixmap_texture_width);
 		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &pixmap_texture_height);
 		glBindTexture(GL_TEXTURE_2D, 0);
 		SetupScene();
+	} else if(!window_resized && zoom_resize) {
+		SetupScene();
 	}
 
-	if(!window_resized && zoom_resize)
-		SetupScene();
+	if(src_window_id) {
+		Window dummyW;
+		int dummyI;
+		unsigned int dummyU;
+		XQueryPointer(x_display, src_window_id, &dummyW, &dummyW,
+					&dummyI, &dummyI, &mouse_x, &mouse_y, &dummyU);
+	}
 
 	// Process SteamVR events
 	vr::VREvent_t event;
@@ -1212,10 +1252,12 @@ void CMainApplication::ResetRotation()
 //-----------------------------------------------------------------------------
 void CMainApplication::MoveCursor(float x, float y)
 {
+	if(!src_window_id)
+		return;
+
 	int xi = (int)(x * window_width);
 	int yi = (int)(y * window_height);
-	XWarpPointer(x_display, None, src_window_id,
-		0, 0, 0, 0, xi, yi);
+	XWarpPointer(x_display, None, src_window_id, 0, 0, 0, 0, xi, yi);
 }
 
 //-----------------------------------------------------------------------------
@@ -1224,6 +1266,9 @@ void CMainApplication::MoveCursor(float x, float y)
 //-----------------------------------------------------------------------------
 void CMainApplication::MouseButton(int button, bool down)
 {
+	if(!src_window_id)
+		return;
+
 	Window root = DefaultRootWindow(x_display);
 
 	Window dummyW;
@@ -1426,8 +1471,13 @@ bool CMainApplication::CreateAllShaders()
 }
 
 bool CMainApplication::SetCursorFromX11CursorImage(XFixesCursorImage *x11_cursor_image) {
-	if(!x11_cursor_image || !x11_cursor_image->pixels)
+	if(!x11_cursor_image)
 		return false;
+		
+	if(!x11_cursor_image->pixels) {
+		XFree(x11_cursor_image);
+		return false;
+	}
 
 	cursor_offset_x = x11_cursor_image->xhot;
 	cursor_offset_y = x11_cursor_image->yhot;
@@ -1475,7 +1525,22 @@ bool CMainApplication::SetCursorFromX11CursorImage(XFixesCursorImage *x11_cursor
 	glUseProgram( m_unSceneProgramID );
 	glUniform2fv(m_nArrowSizeLocation, 1, &cursor_scale_uniform[0]);
 	glUseProgram( 0 );
+	XFree(x11_cursor_image);
 	return true;
+}
+
+Window CMainApplication::get_focused_window() {
+	Atom type;
+	int format = 0;
+	unsigned long num_items = 0;
+	unsigned long bytes_after = 0;
+	unsigned char *properties = nullptr;
+	if(XGetWindowProperty(x_display, DefaultRootWindow(x_display), net_active_window_atom, 0, 1024, False, AnyPropertyType, &type, &format, &num_items, &bytes_after, &properties) == Success && properties) {
+		Window focused_window = *(unsigned long*)properties;
+		XFree(properties);
+		return focused_window;
+	}
+	return None;
 }
 
 
@@ -1674,7 +1739,8 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 	Window root_window;
 	int x_return, y_return;
 	unsigned int width_return, height_return, border_width_return = 0, depth_return;
-	XGetGeometry(x_display, src_window_id, &root_window, &x_return, &y_return, &width_return, &height_return, &border_width_return, &depth_return);
+	if(src_window_id)
+		XGetGeometry(x_display, src_window_id, &root_window, &x_return, &y_return, &width_return, &height_return, &border_width_return, &depth_return);
 
 	if(projection_mode == ProjectionMode::SPHERE)
 	{
@@ -2040,6 +2106,9 @@ void CMainApplication::RenderStereoTargets()
 //-----------------------------------------------------------------------------
 void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 {
+	if(!src_window_id)
+		return;
+	
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_DEPTH_TEST);
 

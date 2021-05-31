@@ -13,6 +13,7 @@ typedef struct {
     Pixmap pixmap;
     GLXPixmap glx_pixmap;
     GLuint texture_id;
+    int redirected;
 } WindowTexture;
 
 /* Returns 0 on success */

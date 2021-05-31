@@ -40,6 +40,12 @@ if you want to watch a 360 video (for example a youtube video), then run:
 ```
 and click on your video player.
 
+Alternatively, you can run:
+```
+./vr-video-player --follow-focused
+```
+and vr-video-player will automatically select the focused window (and update when the focused window changes).
+
 The video might not be in front of you, so to move the video in front of you, you can do any of the following:
 * Pull the trigger on the vr controller
 * Press "Alt + F1"

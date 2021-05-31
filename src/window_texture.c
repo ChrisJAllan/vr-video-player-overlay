@@ -14,16 +14,18 @@ static int x11_supports_composite_named_window_pixmap(Display *display) {
 }
 
 int window_texture_init(WindowTexture *window_texture, Display *display, Window window) {
-    if(!x11_supports_composite_named_window_pixmap(display))
-        return 1;
-
     window_texture->display = display;
     window_texture->window = window;
     window_texture->pixmap = None;
     window_texture->glx_pixmap = None;
     window_texture->texture_id = 0;
+    window_texture->redirected = 0;
+
+    if(!x11_supports_composite_named_window_pixmap(display))
+        return 1;
 
     XCompositeRedirectWindow(display, window, CompositeRedirectAutomatic);
+    window_texture->redirected = 1;
     return window_texture_on_resize(window_texture);
 }
 
@@ -46,7 +48,10 @@ static void window_texture_cleanup(WindowTexture *self, int delete_texture) {
 }
 
 void window_texture_deinit(WindowTexture *self) {
-    XCompositeUnredirectWindow(self->display, self->window, CompositeRedirectAutomatic);
+    if(self->redirected) {
+        XCompositeUnredirectWindow(self->display, self->window, CompositeRedirectAutomatic);
+        self->redirected = 0;
+    }
     window_texture_cleanup(self, 1);
 }
 
