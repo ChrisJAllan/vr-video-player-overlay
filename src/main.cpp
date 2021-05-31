@@ -1076,7 +1076,6 @@ bool CMainApplication::HandleInput()
 			fprintf(stderr, "Failed to init texture\n");
 			//return false;
 		}
-		window_texture_on_resize(&window_texture);
 		glBindTexture(GL_TEXTURE_2D, window_texture_get_opengl_texture_id(&window_texture));
 		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &pixmap_texture_width);
 		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &pixmap_texture_height);
