@@ -93,6 +93,8 @@ public:
 
 	void RunMainLoop();
 	bool HandleInput();
+    void zoom_in();
+    void zoom_out();
 	void ProcessVREvent( const vr::VREvent_t & event );
 	void RenderFrame();
 
@@ -254,6 +256,8 @@ private: // X compositor
 	int window_height;
 	Uint32 window_resize_time;
 	bool window_resized = false;
+	
+    bool zoom_resize = false;
 
 	int x_fixes_event_base;
 	int x_fixes_error_base;
@@ -629,11 +633,17 @@ static void grabkeys(Display *display) {
         }
     }
 	XFreeModifiermap(modmap);
+
+    const int num_keys = 3;
+    int keys[num_keys] = { XK_F1, XK_q, XK_e };
     
 	Window root_window = DefaultRootWindow(display);
     unsigned int modifiers[] = { 0, LockMask, numlockmask, numlockmask|LockMask };
-    for(int i = 0; i < 4; ++i)
-        XGrabKey(display, XKeysymToKeycode(display, XK_F1), Mod1Mask|modifiers[i], root_window, False, GrabModeAsync, GrabModeAsync);
+    for(int i = 0; i < 4; ++i) {
+        for(int j = 0; j < num_keys; ++j) {
+            XGrabKey(display, XKeysymToKeycode(display, keys[j]), Mod1Mask|modifiers[i], root_window, False, GrabModeAsync, GrabModeAsync);
+        }
+    }
 }
 
 
@@ -944,6 +954,38 @@ void CMainApplication::Shutdown()
 		XCloseDisplay(x_display);
 }
 
+void CMainApplication::zoom_in() {
+    if(projection_mode == ProjectionMode::SPHERE360)
+        zoom -= 1.0f;
+    else
+        zoom -= 0.01f;
+    zoom_resize = true;
+
+    std::stringstream strstr;
+    if(follow_focused)
+        strstr << "/tmp/vr-video-player_focused";
+    else
+        strstr << "/tmp/vr-video-player_" << src_window_id;
+    std::ofstream zoomstate(strstr.str());
+    zoomstate << zoom; 
+}
+
+void CMainApplication::zoom_out() {
+    if(projection_mode == ProjectionMode::SPHERE360)
+        zoom += 1.0f;
+    else
+        zoom += 0.01f;
+    zoom_resize = true;
+
+    std::stringstream strstr;
+    if(follow_focused)
+        strstr << "/tmp/vr-video-player_focused";
+    else
+        strstr << "/tmp/vr-video-player_" << src_window_id;
+    std::ofstream zoomstate(strstr.str());
+    zoomstate << zoom;
+}
+
 //-----------------------------------------------------------------------------
 // Purpose:
 //-----------------------------------------------------------------------------
@@ -951,7 +993,7 @@ bool CMainApplication::HandleInput()
 {
 	SDL_Event sdlEvent;
 	bool bRet = false;
-	bool zoom_resize = false;
+    zoom_resize = false;
 
 	while ( SDL_PollEvent( &sdlEvent ) != 0 )
 	{
@@ -971,40 +1013,35 @@ bool CMainApplication::HandleInput()
 			}
 			if( sdlEvent.key.keysym.sym == SDLK_q )
 			{
-				if(projection_mode == ProjectionMode::SPHERE360)
-					zoom -= 1.0f;
-				else
-					zoom -= 0.01f;
-				zoom_resize = true;
-
-				std::stringstream strstr;
-				if(follow_focused)
-					strstr << "/tmp/vr-video-player_focused";
-				else
-					strstr << "/tmp/vr-video-player_" << src_window_id;
-				std::ofstream zoomstate(strstr.str());
-				zoomstate << zoom;
+                zoom_in();
 			}
 			if( sdlEvent.key.keysym.sym == SDLK_e )
 			{
-				if(projection_mode == ProjectionMode::SPHERE360)
-					zoom += 1.0f;
-				else
-					zoom += 0.01f;
-				zoom_resize = true;
-
-				std::stringstream strstr;
-				if(follow_focused)
-					strstr << "/tmp/vr-video-player_focused";
-				else
-					strstr << "/tmp/vr-video-player_" << src_window_id;
-				std::ofstream zoomstate(strstr.str());
-				zoomstate << zoom;
+                zoom_out();
 			}
 		}
 	}
 
 	XEvent xev;
+	
+    if(XCheckTypedEvent(x_display, MappingNotify, &xev)) {
+		XMappingEvent *mapping_ev = &xev.xmapping;
+		XRefreshKeyboardMapping(mapping_ev);
+		if(mapping_ev->request == MappingKeyboard) {
+			fprintf(stderr, "Update keyboard mapping!\n");
+			grabkeys(x_display);
+		}
+	}
+	
+    if (XCheckTypedEvent(x_display, KeyPress, &xev) && (xev.xkey.state & Mod1Mask)) {
+	    int keysym = XKeycodeToKeysym(x_display, xev.xkey.keycode, 0);
+        if(keysym == XK_F1)
+    		m_bResetRotation = true;
+        else if(keysym == XK_q)
+            zoom_in();
+        else if(keysym == XK_e)
+            zoom_out();
+	}
 
 	if(follow_focused && ((XCheckTypedWindowEvent(x_display, DefaultRootWindow(x_display), PropertyNotify, &xev) && xev.xproperty.atom == net_active_window_atom) || !focused_window_set)) {
 		focused_window_set = true;
@@ -1033,19 +1070,6 @@ bool CMainApplication::HandleInput()
 				cursor_image_set = true;
 				SetCursorFromX11CursorImage(XFixesGetCursorImage(x_display));
 			}
-		}
-	}
-
-	if (XCheckTypedEvent(x_display, KeyPress, &xev) && XKeycodeToKeysym(x_display, xev.xkey.keycode, 0) == XK_F1 && (xev.xkey.state & Mod1Mask)) {
-		m_bResetRotation = true;
-	}
-
-	if(XCheckTypedEvent(x_display, MappingNotify, &xev)) {
-		XMappingEvent *mapping_ev = &xev.xmapping;
-		XRefreshKeyboardMapping(mapping_ev);
-		if(mapping_ev->request == MappingKeyboard) {
-			fprintf(stderr, "Update keyboard mapping!\n");
-			grabkeys(x_display);
 		}
 	}
 

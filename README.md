@@ -53,7 +53,7 @@ The video might not be in front of you, so to move the video in front of you, yo
 * Press the select/back button on an xbox controller while the application is focused
 * Send a SIGUSR1 signal to the application, using the following command: `killall -USR1 vr-video-player`
 
-You can zoom the view with the Q and E keys when the vr-video-player is focused.
+You can zoom the view with alt + Q/E.
 
 You can launch vr-video-player without any arguments to show a list of all arguments.
 
