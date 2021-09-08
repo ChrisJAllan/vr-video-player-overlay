@@ -1034,7 +1034,7 @@ bool CMainApplication::HandleInput()
 	}
 	
     if (XCheckTypedEvent(x_display, KeyPress, &xev) && (xev.xkey.state & Mod1Mask)) {
-	    int keysym = XKeycodeToKeysym(x_display, xev.xkey.keycode, 0);
+	    KeySym keysym = XLookupKeysym(&xev.xkey, 0);
         if(keysym == XK_F1)
     		m_bResetRotation = true;
         else if(keysym == XK_q)
