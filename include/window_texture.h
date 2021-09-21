@@ -1,8 +1,11 @@
 #ifndef WINDOW_TEXTURE_H
 #define WINDOW_TEXTURE_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define GLX_GLXEXT_PROTOTYPES
-#include <GL/glew.h>
 #include <GL/glx.h>
 #include <GL/glxext.h>
 #include <X11/Xlib.h>
@@ -27,5 +30,9 @@ void window_texture_deinit(WindowTexture *self);
 int window_texture_on_resize(WindowTexture *self);
 
 GLuint window_texture_get_opengl_texture_id(WindowTexture *self);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WINDOW_TEXTURE_H */

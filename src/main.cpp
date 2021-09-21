@@ -31,14 +31,11 @@
 
 // Modified by: DEC05EBA
 
-extern "C" {
+#include <GL/glew.h>
 #include "../include/window_texture.h"
-}
 
 #include <SDL.h>
-#include <GL/glew.h>
 #include <SDL_opengl.h>
-#include <GL/glu.h>
 #include <openvr.h>
 #define GLX_GLXEXT_PROTOTYPES
 #include <GL/glx.h>
@@ -46,11 +43,9 @@ extern "C" {
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <X11/Xlib.h>
 #include <X11/XKBlib.h>
+#include <X11/Xlib.h>
 #include <X11/extensions/Xfixes.h>
-#include <X11/Xproto.h>
-#include <GL/glxproto.h>
 
 #include <stdio.h>
 #include <string>
