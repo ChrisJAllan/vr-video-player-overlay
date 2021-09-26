@@ -280,6 +280,7 @@ private: // X compositor
 	ViewMode view_mode = ViewMode::LEFT_RIGHT;
 	bool stretch = true;
 	bool cursor_wrap = true;
+	bool free_camera = false;
 
 	GLuint arrow_image_texture_id = 0;
 	int arrow_image_width = 1;
@@ -395,6 +396,7 @@ static void usage() {
     fprintf(stderr, "  --cursor-wrap     If this option is set, then the cursor position in the vr view will wrap around when it reached the center of the window (i.e when it reaches the edge of one side of the stereoscopic view). This option is only valid for stereoscopic view (flat and sphere modes)\n");
     fprintf(stderr, "  --no-cursor-wrap  If this option is set, then the cursor position in the vr view will match the the real cursor position inside the window\n");
 	fprintf(stderr, "  --follow-focused  If this option is set, then the selected window will be the focused window. vr-video-player will automatically update when the focused window changes. Either this option or window_id should be used\n");
+	fprintf(stderr, "  --free-camera     If this option is set, then the camera wont follow your position. This option is only applicable when not using --sphere or --sphere360\n");
     fprintf(stderr, "  window_id         The X11 window id of the window to view in vr. This option or --follow-focused is required\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "EXAMPLES\n");
@@ -524,6 +526,8 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 				exit(1);
 			}
 			follow_focused = true;
+		} else if(strcmp(argv[i], "--free-camera") == 0) {
+			free_camera = true;
 		} else if(argv[i][0] == '-') {
 			fprintf(stderr, "Invalid flag: %s\n", argv[i]);
 			usage();
@@ -1135,7 +1139,7 @@ bool CMainApplication::HandleInput()
 		m_reset_rotation = glm::inverse(hmd_rot);
 	}
 
-	if(projection_mode == ProjectionMode::SPHERE || projection_mode == ProjectionMode::SPHERE360) {
+	if(projection_mode == ProjectionMode::SPHERE || projection_mode == ProjectionMode::SPHERE360 || !free_camera) {
 		hmd_pos = current_pos;
 	}
 
