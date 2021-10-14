@@ -11,7 +11,7 @@ vr video player can be built by running `./build.sh` or by using [sibs](https://
 Dependencies needed when building using `build.sh`: `glm, glew, sdl2, openvr, libx11, libxcomposite, libxfixes`.
 
 # How to use
-Install xdotool and launch a video in a video player (I recommend mpv) and fullscreen it or resize it to fit your monitor for best quality and then,
+Install xdotool and launch a video in a video player (I recommend mpv, because browsers, smplayer and vlc player remove the vr for 360 videos) and resize it to fit your monitor or larger for best quality and then,
 
 if you want to watch 180 degree stereoscopic videos then run:
 ```
