@@ -1744,17 +1744,6 @@ static void vertices_rotate(float *vertices, size_t num_vertices, float angle, g
 //-----------------------------------------------------------------------------
 void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> &vertdata )
 {
-	// glm::mat4 mat( outermat.data() );
-
-	glm::vec4 A = mat * glm::vec4( 0, 0, 0, 1 );
-	glm::vec4 B = mat * glm::vec4( 1, 0, 0, 1 );
-	glm::vec4 C = mat * glm::vec4( 1, 1, 0, 1 );
-	glm::vec4 D = mat * glm::vec4( 0, 1, 0, 1 );
-	glm::vec4 E = mat * glm::vec4( 0, 0, 1, 1 );
-	glm::vec4 F = mat * glm::vec4( 1, 0, 1, 1 );
-	glm::vec4 G = mat * glm::vec4( 1, 1, 1, 1 );
-	glm::vec4 H = mat * glm::vec4( 0, 1, 1, 1 );
-
 	double width_ratio = (double)pixmap_texture_width / (double)pixmap_texture_height;
 	arrow_ratio = width_ratio;
 
@@ -1909,6 +1898,7 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 		if(stretch)
 			arrow_ratio = width_ratio * 2.0;
 	} else if (projection_mode == ProjectionMode::SPHERE360) {
+		border_width_return += 2; // Meh, hac k to deal with seams a bit
 		double px = (double)border_width_return / (double)pixmap_texture_width;
 		double py = (double)border_width_return / (double)pixmap_texture_height;
 
