@@ -1053,6 +1053,11 @@ bool CMainApplication::HandleInput()
 	}
 
 	if(src_window_id) {
+		if (XCheckTypedWindowEvent(x_display, src_window_id, VisibilityNotify, &xev)) {
+			window_resize_time = SDL_GetTicks();
+			window_resized = true;
+		}
+
 		if (XCheckTypedWindowEvent(x_display, src_window_id, ConfigureNotify, &xev) && xev.xconfigure.window == src_window_id) {
 			// Window resize
 			if(xev.xconfigure.width != window_width || xev.xconfigure.height != window_height) {
@@ -1089,7 +1094,7 @@ bool CMainApplication::HandleInput()
 		window_resize_time = SDL_GetTicks();
 		window_resized = false;
 
-		XSelectInput(x_display, src_window_id, StructureNotifyMask|KeyPressMask|KeyReleaseMask);
+		XSelectInput(x_display, src_window_id, StructureNotifyMask|VisibilityChangeMask|KeyPressMask|KeyReleaseMask);
 		XFixesSelectCursorInput(x_display, src_window_id, XFixesDisplayCursorNotifyMask);
 
 		focused_window_changed = false;

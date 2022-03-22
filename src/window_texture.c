@@ -70,8 +70,10 @@ int window_texture_on_resize(WindowTexture *self) {
         GLX_DRAWABLE_TYPE, GLX_PIXMAP_BIT | GLX_WINDOW_BIT,
         GLX_BIND_TO_TEXTURE_TARGETS_EXT, GLX_TEXTURE_2D_BIT_EXT,
         /*GLX_BIND_TO_MIPMAP_TEXTURE_EXT, True,*/
-        GLX_DOUBLEBUFFER, False,
-        GLX_BUFFER_SIZE, 32,
+        GLX_BUFFER_SIZE, 24, 
+        GLX_RED_SIZE, 8,
+        GLX_GREEN_SIZE, 8,
+        GLX_BLUE_SIZE, 8,
         GLX_ALPHA_SIZE, 0,
         None
     };
