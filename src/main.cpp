@@ -1054,8 +1054,9 @@ bool CMainApplication::HandleInput()
 
 	if(src_window_id) {
 		if (XCheckTypedWindowEvent(x_display, src_window_id, VisibilityNotify, &xev)) {
-			window_resize_time = SDL_GetTicks();
-			window_resized = true;
+			// TODO: Re-enable. This currently spams visibility notify change
+			//window_resize_time = SDL_GetTicks();
+			//window_resized = true;
 		}
 
 		if (XCheckTypedWindowEvent(x_display, src_window_id, ConfigureNotify, &xev) && xev.xconfigure.window == src_window_id) {
@@ -1097,8 +1098,6 @@ bool CMainApplication::HandleInput()
 		if(focused_window_changed) {
 			XSelectInput(x_display, src_window_id, StructureNotifyMask|VisibilityChangeMask|KeyPressMask|KeyReleaseMask);
 			XFixesSelectCursorInput(x_display, src_window_id, XFixesDisplayCursorNotifyMask);
-			XFlush(x_display);
-			XSync(x_display, False);
 		}
 
 		focused_window_changed = false;
