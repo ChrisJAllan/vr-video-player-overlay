@@ -167,9 +167,9 @@ int window_texture_on_resize(WindowTexture *self) {
 
     cleanup:
     if(texture_id != 0)     glDeleteTextures(1, &texture_id);
-    if(glx_pixmap)          glXDestroyPixmap(self->display, self->glx_pixmap);
-    if(glx_pixmap_bound)    glXReleaseTexImageEXT(self->display, self->glx_pixmap, GLX_FRONT_EXT);
-    if(pixmap)              XFreePixmap(self->display, self->pixmap);
+    if(glx_pixmap)          glXDestroyPixmap(self->display, glx_pixmap);
+    if(glx_pixmap_bound)    glXReleaseTexImageEXT(self->display, glx_pixmap, GLX_FRONT_EXT);
+    if(pixmap)              XFreePixmap(self->display, pixmap);
     if(configs)             XFree(configs);
     return result;
 }

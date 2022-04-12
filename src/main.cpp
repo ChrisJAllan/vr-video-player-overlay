@@ -1094,8 +1094,12 @@ bool CMainApplication::HandleInput()
 		window_resize_time = SDL_GetTicks();
 		window_resized = false;
 
-		XSelectInput(x_display, src_window_id, StructureNotifyMask|VisibilityChangeMask|KeyPressMask|KeyReleaseMask);
-		XFixesSelectCursorInput(x_display, src_window_id, XFixesDisplayCursorNotifyMask);
+		if(focused_window_changed) {
+			XSelectInput(x_display, src_window_id, StructureNotifyMask|VisibilityChangeMask|KeyPressMask|KeyReleaseMask);
+			XFixesSelectCursorInput(x_display, src_window_id, XFixesDisplayCursorNotifyMask);
+			XFlush(x_display);
+			XSync(x_display, False);
+		}
 
 		focused_window_changed = false;
 		window_resized = false;
