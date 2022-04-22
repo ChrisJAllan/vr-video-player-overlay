@@ -281,6 +281,8 @@ private: // X compositor
 	bool stretch = true;
 	bool cursor_wrap = true;
 	bool free_camera = false;
+	bool reduce_flicker = false;
+	double reduce_flicker_counter = 0.0;
 
 	GLuint arrow_image_texture_id = 0;
 	int arrow_image_width = 1;
@@ -397,6 +399,7 @@ static void usage() {
     fprintf(stderr, "  --no-cursor-wrap  If this option is set, then the cursor position in the vr view will match the the real cursor position inside the window\n");
 	fprintf(stderr, "  --follow-focused  If this option is set, then the selected window will be the focused window. vr-video-player will automatically update when the focused window changes. Either this option or window_id should be used\n");
 	fprintf(stderr, "  --free-camera     If this option is set, then the camera wont follow your position. This option is only applicable when not using --sphere or --sphere360\n");
+	fprintf(stderr, "  --reduce-flicker  A hack to reduce flickering in low resolution text when the headset is not moving by moving the window around quickly by a few pixels\n");
     fprintf(stderr, "  window_id         The X11 window id of the window to view in vr. This option or --follow-focused is required\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "EXAMPLES\n");
@@ -425,7 +428,7 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	, m_bVerbose( false )
 	, m_bPerf( false )
 	, m_bVblank( false )
-	, m_bGlFinishHack( true )
+	, m_bGlFinishHack( false )
 	, m_glControllerVertBuffer( 0 )
 	, m_unControllerVAO( 0 )
 	, m_unSceneVAO( 0 )
@@ -528,6 +531,8 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 			follow_focused = true;
 		} else if(strcmp(argv[i], "--free-camera") == 0) {
 			free_camera = true;
+		} else if(strcmp(argv[i], "--reduce-flicker") == 0) {
+			reduce_flicker = true;
 		} else if(argv[i][0] == '-') {
 			fprintf(stderr, "Invalid flag: %s\n", argv[i]);
 			usage();
@@ -2314,6 +2319,11 @@ glm::mat4 CMainApplication::GetCurrentViewProjectionMatrix( vr::Hmd_Eye nEye )
 	//memcpy(&m_mat4HMDPose[0], &pp[0], sizeof(pp));
 	glm::mat4 hmd_pose = m_mat4HMDPose;
 	hmd_pose = glm::translate(hmd_pose, hmd_pos);
+	if(reduce_flicker) {
+		hmd_pose = glm::rotate(hmd_pose, (float)(cos(reduce_flicker_counter)*0.0005), glm::vec3(0.0f, 1.0f, 0.0f));
+		hmd_pose = glm::rotate(hmd_pose, (float)(sin(reduce_flicker_counter)*0.0005), glm::vec3(1.0f, 0.0f, 0.0f));
+		reduce_flicker_counter += 1.0;
+	}
 	hmd_pose = hmd_pose * mat4_cast(m_reset_rotation);
 	if( nEye == vr::Eye_Left )
 	{
