@@ -1152,9 +1152,8 @@ bool CMainApplication::HandleInput()
 		m_reset_rotation = glm::inverse(hmd_rot);
 	}
 
-	if(projection_mode == ProjectionMode::SPHERE || projection_mode == ProjectionMode::SPHERE360 || !free_camera) {
+	if(!free_camera)
 		hmd_pos = current_pos;
-	}
 
 	vr::InputAnalogActionData_t analogData;
 	if ( vr::VRInput()->GetAnalogActionData( m_actionAnalongInput, &analogData, sizeof( analogData ), vr::k_ulInvalidInputValueHandle ) == vr::VRInputError_None && analogData.bActive )
@@ -1771,9 +1770,7 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 		long columns = 32;
 		long rows = 32;
 		double angle_x = 3.14;
-		double angle_y = 3.14;
-		double radius_depth = 1.0;
-		double radius_height = 0.5;
+		double radius_height = 1.0;
 		double radius = radius_height * width_ratio * 0.5;
 
 		for(long row = 0; row < rows; ++row) {
