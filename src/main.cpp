@@ -256,6 +256,7 @@ private: // X compositor
 
 	int x_fixes_event_base;
 	int x_fixes_error_base;
+	int prev_visibility_state = VisibilityFullyObscured;
 
 	GLint pixmap_texture_width = 0;
 	GLint pixmap_texture_height = 0;
@@ -1059,9 +1060,11 @@ bool CMainApplication::HandleInput()
 
 	if(src_window_id) {
 		if (XCheckTypedWindowEvent(x_display, src_window_id, VisibilityNotify, &xev)) {
-			// TODO: Re-enable. This currently spams visibility notify change
-			//window_resize_time = SDL_GetTicks();
-			//window_resized = true;
+			if((prev_visibility_state == VisibilityFullyObscured && xev.xvisibility.state != VisibilityFullyObscured) || (xev.xvisibility.state == prev_visibility_state)) {
+				window_resize_time = SDL_GetTicks();
+				window_resized = true;
+			}
+			prev_visibility_state = xev.xvisibility.state;
 		}
 
 		if (XCheckTypedWindowEvent(x_display, src_window_id, ConfigureNotify, &xev) && xev.xconfigure.window == src_window_id) {
@@ -1089,7 +1092,7 @@ bool CMainApplication::HandleInput()
 	}
 
 	Uint32 time_now = SDL_GetTicks();
-	const int window_resize_timeout = 500; /* 0.5 seconds */
+	const int window_resize_timeout = 1000; /* 1.0 second */
 	if((focused_window_changed && src_window_id) || (window_resized && time_now - window_resize_time >= window_resize_timeout)) {
 		XWindowAttributes xwa;
 		if(!XGetWindowAttributes(x_display, src_window_id, &xwa)) {

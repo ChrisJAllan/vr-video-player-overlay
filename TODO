@@ -1,0 +1,1 @@
+Use libmpv. Make stereo audio follow headset rotation in 180/360 mode (assume facing forward is the default audio mode).
