@@ -256,6 +256,7 @@ private: // X compositor
 
 	int x_fixes_event_base;
 	int x_fixes_error_base;
+	int prev_visibility_state = VisibilityFullyObscured;
 
 	GLint pixmap_texture_width = 0;
 	GLint pixmap_texture_height = 0;
@@ -1058,9 +1059,12 @@ bool CMainApplication::HandleInput()
 	}
 
 	if(src_window_id) {
-		if (XCheckTypedWindowEvent(x_display, src_window_id, Expose, &xev) && xev.xexpose.count == 0) {
-			window_resize_time = SDL_GetTicks();
-			window_resized = true;
+		if (XCheckTypedWindowEvent(x_display, src_window_id, VisibilityNotify, &xev)) {
+			if((prev_visibility_state == VisibilityFullyObscured && xev.xvisibility.state != VisibilityFullyObscured) || (xev.xvisibility.state == prev_visibility_state)) {
+				window_resize_time = SDL_GetTicks();
+				window_resized = true;
+			}
+			prev_visibility_state = xev.xvisibility.state;
 		}
 
 		if (XCheckTypedWindowEvent(x_display, src_window_id, ConfigureNotify, &xev) && xev.xconfigure.window == src_window_id) {
@@ -1088,7 +1092,7 @@ bool CMainApplication::HandleInput()
 	}
 
 	Uint32 time_now = SDL_GetTicks();
-	const int window_resize_timeout = 1000; /* 1 second */
+	const int window_resize_timeout = 1000; /* 1.0 second */
 	if((focused_window_changed && src_window_id) || (window_resized && time_now - window_resize_time >= window_resize_timeout)) {
 		XWindowAttributes xwa;
 		if(!XGetWindowAttributes(x_display, src_window_id, &xwa)) {
@@ -1100,7 +1104,7 @@ bool CMainApplication::HandleInput()
 		window_resized = false;
 
 		if(focused_window_changed) {
-			XSelectInput(x_display, src_window_id, StructureNotifyMask|ExposureMask|KeyPressMask|KeyReleaseMask);
+			XSelectInput(x_display, src_window_id, StructureNotifyMask|VisibilityChangeMask|KeyPressMask|KeyReleaseMask);
 			XFixesSelectCursorInput(x_display, src_window_id, XFixesDisplayCursorNotifyMask);
 		}
 
