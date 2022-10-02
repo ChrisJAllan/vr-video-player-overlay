@@ -61,6 +61,9 @@
 #include <fstream>
 #include <sstream>
 
+#include <thread>
+#include <mutex>
+
 #ifndef _countof
 #define _countof(x) (sizeof(x)/sizeof((x)[0]))
 #endif
@@ -140,6 +143,7 @@ private: // SDL bookkeeping
 	uint32_t m_nCompanionWindowHeight;
 
 	SDL_GLContext m_pContext;
+	SDL_GLContext m_pMpvContext;
 
 private: // OpenGL bookkeeping
 	int m_iTrackedControllerCount;
@@ -228,6 +232,9 @@ private: // OpenGL bookkeeping
 	FramebufferDesc mpvDesc;
 
 	bool CreateFrameBuffer( int nWidth, int nHeight, FramebufferDesc &framebufferDesc );
+	void set_current_context(SDL_GLContext context);
+	bool take_render_update();
+	void set_render_update();
 	
 	uint32_t m_nRenderWidth;
 	uint32_t m_nRenderHeight;
@@ -249,10 +256,16 @@ private: // X compositor
 	bool focused_window_set = false;
 	const char *mpv_file = nullptr;
 	Mpv mpv;
+	std::mutex mpv_render_update_mutex;
 	bool mpv_render_update = false;
 	int64_t mpv_video_width = 0;
 	int64_t mpv_video_height = 0;
 	bool mpv_video_loaded = false;
+	bool mpv_loaded_in_thread = false;
+	bool running = true;
+	std::mutex context_mutex;
+
+	std::thread mpv_thread;
 
 	int mouse_x = 0;
 	int mouse_y = 0;
@@ -431,6 +444,7 @@ static void usage() {
 CMainApplication::CMainApplication( int argc, char *argv[] )
 	: m_pCompanionWindow(NULL)
 	, m_pContext(NULL)
+	, m_pMpvContext(NULL)
 	, m_nCompanionWindowWidth( 800 )
 	, m_nCompanionWindowHeight( 600 )
 	, m_unSceneProgramID( 0 )
@@ -748,6 +762,7 @@ bool CMainApplication::BInit()
 
 	SDL_GL_SetAttribute( SDL_GL_MULTISAMPLEBUFFERS, 0 );
 	SDL_GL_SetAttribute( SDL_GL_MULTISAMPLESAMPLES, 0 );
+	SDL_GL_SetAttribute( SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1 );
 	if( m_bDebugOpenGL )
 		SDL_GL_SetAttribute( SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG );
 
@@ -765,6 +780,20 @@ bool CMainApplication::BInit()
 	if (m_pContext == NULL)
 	{
 		printf( "%s - OpenGL context could not be created! SDL Error: %s\n", __FUNCTION__, SDL_GetError() );
+		return false;
+	}
+
+	if(mpv_file) {
+		m_pMpvContext = SDL_GL_CreateContext(m_pCompanionWindow);
+		if (m_pMpvContext == NULL)
+		{
+			printf( "%s - OpenGL context could not be created! SDL Error: %s\n", __FUNCTION__, SDL_GetError() );
+			return false;
+		}
+	}
+
+	if(SDL_GL_MakeCurrent(m_pCompanionWindow, m_pContext) < 0) {
+		fprintf(stderr, "Failed to make opengl context current, error: %s\n", SDL_GetError());
 		return false;
 	}
 
@@ -812,10 +841,57 @@ bool CMainApplication::BInit()
 	}
 
 	if(mpv_file) {
-		if(!mpv.create())
-			return false;
+		mpv_thread = std::thread([&]{
+			set_current_context(m_pMpvContext);
+			if(!mpv.create())
+				return;
 
-		mpv.load_file(mpv_file);
+			mpv.load_file(mpv_file);
+			set_current_context(NULL);
+
+			while(running) {
+				set_current_context(m_pMpvContext);
+
+				if(mpv_video_loaded && !mpv_loaded_in_thread) {
+					mpv_loaded_in_thread = true;
+					// TODO: Do not create depth buffer and extra framebuffers
+					CreateFrameBuffer(mpv_video_width, mpv_video_height, mpvDesc);
+				}
+
+				if(mpv_video_loaded) {
+					glBindFramebuffer( GL_FRAMEBUFFER, mpvDesc.m_nRenderFramebufferId );
+					glViewport(0, 0, mpv_video_width, mpv_video_height);
+					if(take_render_update()) {
+						glDisable(GL_DEPTH_TEST);
+
+						glBindVertexArray( m_unCompanionWindowVAO );
+						glUseProgram( m_unCompanionWindowProgramID );
+
+						mpv.draw(mpvDesc.m_nRenderFramebufferId, mpv_video_width, mpv_video_height);
+
+						glBindVertexArray( 0 );
+						glUseProgram( 0 );
+					}
+					glBindFramebuffer( GL_FRAMEBUFFER, 0 );
+					
+					glDisable( GL_MULTISAMPLE );
+
+					glBindFramebuffer(GL_READ_FRAMEBUFFER, mpvDesc.m_nRenderFramebufferId );
+					glBindFramebuffer(GL_DRAW_FRAMEBUFFER, mpvDesc.m_nResolveFramebufferId );
+					
+					glBlitFramebuffer( 0, 0, mpv_video_width, mpv_video_height, 0, 0, mpv_video_width, mpv_video_height, 
+						GL_COLOR_BUFFER_BIT,
+						GL_LINEAR  );
+
+					glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+					glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0 );
+
+					glEnable( GL_MULTISAMPLE );
+				}
+
+				set_current_context(NULL);
+			}
+		});
 	}
 
 	//char cwd[4096];
@@ -941,6 +1017,9 @@ void CMainApplication::Shutdown()
 	
 	if( m_pContext )
 	{
+		if(mpv_thread.joinable())
+			mpv_thread.join();
+
 		if(mpv_file)
 			mpv.destroy();
 
@@ -1048,7 +1127,6 @@ bool CMainApplication::HandleInput()
 	SDL_Event sdlEvent;
 	bool bRet = false;
     zoom_resize = false;
-	mpv_render_update = false;
 	int64_t video_width = 0;
 	int64_t video_height = 0;
 	bool mpv_quit = false;
@@ -1094,20 +1172,20 @@ bool CMainApplication::HandleInput()
 		bool opdoot = false;
 		if(mpv_file)
 			mpv.on_event(sdlEvent, &opdoot, &video_width, &video_height, &mpv_quit);
-		mpv_render_update |= opdoot;
+
+		if(opdoot)
+			set_render_update();
 
 		if(mpv_quit)
 			bRet = true;
 
 		// TODO: Allow resize config
-		if(video_width > 0 && video_height > 0 && video_width != mpv_video_width && video_height != mpv_video_height && !mpv_video_loaded) {
-			mpv_video_loaded = true;
+		if(video_width > 0 && video_height > 0 && video_width != mpv_video_width && video_height != mpv_video_height && !mpv_video_loaded && !mpv_loaded_in_thread) {
 			mpv_video_width = video_width;
 			mpv_video_height = video_height;
 			pixmap_texture_width = mpv_video_width;
 			pixmap_texture_height = mpv_video_height;
-			// TODO: Do not create depth buffer and extra framebuffers
-			CreateFrameBuffer(mpv_video_width, mpv_video_height, mpvDesc);
+			mpv_video_loaded = true;
 			SetupScene();
 		}
 	}
@@ -1273,10 +1351,19 @@ void CMainApplication::RunMainLoop()
 
 	while ( !bQuit )
 	{
+		set_current_context(m_pContext);
 		bQuit = HandleInput();
+		if(bQuit)
+			running = false;
 
 		RenderFrame();
+		set_current_context(NULL);
 	}
+
+	if(mpv_thread.joinable())
+		mpv_thread.join();
+
+	set_current_context(m_pContext);
 
 	if (controller)
 		SDL_JoystickClose(controller);
@@ -2096,6 +2183,23 @@ bool CMainApplication::CreateFrameBuffer( int nWidth, int nHeight, FramebufferDe
 	return true;
 }
 
+void CMainApplication::set_current_context(SDL_GLContext context) {
+	std::lock_guard<std::mutex> lock(context_mutex);
+	SDL_GL_MakeCurrent(m_pCompanionWindow, context);
+}
+
+bool CMainApplication::take_render_update() {
+	std::lock_guard<std::mutex> lock(mpv_render_update_mutex);
+	bool should_update = mpv_render_update;
+	mpv_render_update = false;
+	return should_update;
+}
+
+void CMainApplication::set_render_update() {
+	std::lock_guard<std::mutex> lock(mpv_render_update_mutex);
+	mpv_render_update = true;
+}
+
 
 //-----------------------------------------------------------------------------
 // Purpose:
@@ -2173,39 +2277,6 @@ void CMainApplication::RenderStereoTargets()
 {
 	glClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
 	glEnable( GL_MULTISAMPLE );
-
-	// Mpv
-	if(mpv_file && mpv_video_loaded) {
-		glBindFramebuffer( GL_FRAMEBUFFER, mpvDesc.m_nRenderFramebufferId );
-		glViewport(0, 0, mpv_video_width, mpv_video_height);
-		if(mpv_render_update) {
-			mpv_render_update = false;
-			glDisable(GL_DEPTH_TEST);
-
-			glBindVertexArray( m_unCompanionWindowVAO );
-			glUseProgram( m_unCompanionWindowProgramID );
-
-			mpv.draw(mpvDesc.m_nRenderFramebufferId, mpv_video_width, mpv_video_height);
-
-			glBindVertexArray( 0 );
-			glUseProgram( 0 );
-		}
-		glBindFramebuffer( GL_FRAMEBUFFER, 0 );
-		
-		glDisable( GL_MULTISAMPLE );
-
-		glBindFramebuffer(GL_READ_FRAMEBUFFER, mpvDesc.m_nRenderFramebufferId );
-		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, mpvDesc.m_nResolveFramebufferId );
-		
-		glBlitFramebuffer( 0, 0, mpv_video_width, mpv_video_height, 0, 0, mpv_video_width, mpv_video_height, 
-			GL_COLOR_BUFFER_BIT,
-			GL_LINEAR  );
-
-		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0 );
-
-		glEnable( GL_MULTISAMPLE );
-	}
 
 	// Left Eye
 	glBindFramebuffer( GL_FRAMEBUFFER, leftEyeDesc.m_nRenderFramebufferId );

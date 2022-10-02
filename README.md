@@ -11,7 +11,7 @@ Run `./build.sh` or if you are running Arch Linux, then you can find it on aur u
 Dependencies needed when building using `build.sh`: `glm, glew, sdl2, openvr, libx11, libxcomposite, libxfixes, libmpv`.
 
 # How to use
-vr-video-player has two options. Either capture a window and view it in vr or an work-in-progress built-in mpv option (slower at the moment).
+vr-video-player has two options. Either capture a window and view it in vr or a work-in-progress built-in mpv option.
 # Using the built-in video player
 To play a video with the built-in mpv player, run vr-video-player like so:
 ```
