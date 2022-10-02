@@ -68,11 +68,6 @@
 #define _countof(x) (sizeof(x)/sizeof((x)[0]))
 #endif
 
-void ThreadSleep( unsigned long nMilliseconds )
-{
-	usleep( nMilliseconds * 1000 );
-}
-
 static bool g_bPrintf = true;
 
 //-----------------------------------------------------------------------------
@@ -887,6 +882,8 @@ bool CMainApplication::BInit()
 					glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0 );
 
 					glEnable( GL_MULTISAMPLE );
+				} else {
+					usleep(1000);
 				}
 
 				set_current_context(NULL);
