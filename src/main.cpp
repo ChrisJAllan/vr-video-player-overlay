@@ -2000,7 +2000,8 @@ void CMainApplication::AddCubeToScene( const glm::mat4 &mat, std::vector<float> 
 		if(stretch)
 			arrow_ratio = width_ratio * 2.0;
 	} else if (projection_mode == ProjectionMode::SPHERE360) {
-		border_width_return += 2; // Meh, hac k to deal with seams a bit
+		if(!mpv_file)
+			border_width_return += 2; // Meh, hac k to deal with seams a bit
 		double px = (double)border_width_return / (double)pixmap_texture_width;
 		double py = (double)border_width_return / (double)pixmap_texture_height;
 
