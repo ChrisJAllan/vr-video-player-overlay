@@ -1,1 +1,6 @@
-Use libmpv. Make stereo audio follow headset rotation in 180/360 mode (assume facing forward is the default audio mode).
+Use pointer/button motion event instead of XQueryPointer every frame.
+Use directional audio when using mpv.
+Optimize mpv rendering option. Causes stuttering for some reason while capturing a mpv window does not.
+Dynamically load mpv (with dlopen) when using the --video option instead of linking to it at compile time.
+Show mpv gui.
+Allow setting/changing video at runtime.

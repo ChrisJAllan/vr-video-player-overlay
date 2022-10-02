@@ -8,9 +8,22 @@ Might now work when using a compositor such as picom when using the glx backend.
 
 # Building
 Run `./build.sh` or if you are running Arch Linux, then you can find it on aur under the name vr-video-player-git (`yay -S vr-video-player-git`).\
-Dependencies needed when building using `build.sh`: `glm, glew, sdl2, openvr, libx11, libxcomposite, libfixes`.
+Dependencies needed when building using `build.sh`: `glm, glew, sdl2, openvr, libx11, libxcomposite, libxfixes, libmpv`.
 
 # How to use
+vr-video-player has two options. Either capture a window and view it in vr or an work-in-progress built-in mpv option (slower at the moment).
+# Using the built-in video player
+To play a video with the built-in mpv player, run vr-video-player like so:
+```
+./vr-video-player --sphere --video <file-path>
+```
+for example:
+```
+./vr-video-player --sphere --video /home/adam/Videos/my-cool-vr-video.mp4
+```
+`--sphere` can be replaced with `--flat`, `plane` or `--sphere360` for different display modes.
+
+# Capturing a window
 Install xdotool and launch a video in a video player (I recommend mpv, because browsers, smplayer and vlc player remove the vr for 360 videos) and resize it to fit your monitor or larger for best quality and then,
 
 if you want to watch 180 degree stereoscopic videos then run:
@@ -49,6 +62,7 @@ Alternatively, you can run:
 ```
 and vr-video-player will automatically select the focused window (and update when the focused window changes).
 
+# Input options
 The video might not be in front of you, so to move the video in front of you, you can do any of the following:
 * Pull the trigger on the vr controller
 * Press "Alt + F1"
@@ -57,6 +71,8 @@ The video might not be in front of you, so to move the video in front of you, yo
 * Send a SIGUSR1 signal to the application, using the following command: `killall -USR1 vr-video-player`
 
 You can zoom the view with alt + Q/E.
+
+When using the built-in video player and the vr window is focused you can then use left/right arrow keys to move back/forward in the video and space to pause. In the future vr-video-player will show a graphical interface inside vr to manipulate the video.
 
 You can launch vr-video-player without any arguments to show a list of all arguments.
 

@@ -33,6 +33,7 @@
 
 #include <GL/glew.h>
 #include "../include/window_texture.h"
+#include "../include/mpv.hpp"
 
 #include <SDL.h>
 #include <SDL_opengl.h>
@@ -224,6 +225,8 @@ private: // OpenGL bookkeeping
 	FramebufferDesc leftEyeDesc;
 	FramebufferDesc rightEyeDesc;
 
+	FramebufferDesc mpvDesc;
+
 	bool CreateFrameBuffer( int nWidth, int nHeight, FramebufferDesc &framebufferDesc );
 	
 	uint32_t m_nRenderWidth;
@@ -244,11 +247,17 @@ private: // X compositor
 	bool follow_focused = false;
 	bool focused_window_changed = true;
 	bool focused_window_set = false;
+	const char *mpv_file = nullptr;
+	Mpv mpv;
+	bool mpv_render_update = false;
+	int64_t mpv_video_width = 0;
+	int64_t mpv_video_height = 0;
+	bool mpv_video_loaded = false;
 
-	int mouse_x;
-	int mouse_y;
-	int window_width;
-	int window_height;
+	int mouse_x = 0;
+	int mouse_y = 0;
+	int window_width = 1;
+	int window_height = 1;
 	Uint32 window_resize_time;
 	bool window_resized = false;
 	
@@ -258,8 +267,8 @@ private: // X compositor
 	int x_fixes_error_base;
 	int prev_visibility_state = VisibilityFullyObscured;
 
-	GLint pixmap_texture_width = 0;
-	GLint pixmap_texture_height = 0;
+	GLint pixmap_texture_width = 1;
+	GLint pixmap_texture_height = 1;
 
 	enum class ViewMode {
 		LEFT_RIGHT,
@@ -383,25 +392,26 @@ void dprintf( const char *fmt, ... )
 }
 
 static void usage() {
-	fprintf(stderr, "usage: vr-video-player [--sphere|--sphere360|--flat|--plane] [--left-right|--right-left] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] [--cursor-wrap|--no-cursor-wrap] [--follow-focused] <window_id>\n");
+	fprintf(stderr, "usage: vr-video-player [--sphere|--sphere360|--flat|--plane] [--left-right|--right-left] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] [--cursor-wrap|--no-cursor-wrap] [--follow-focused] [--video video] <window_id>\n");
     fprintf(stderr, "\n");
 	fprintf(stderr, "OPTIONS\n");
-    fprintf(stderr, "  --sphere          View the window as a stereoscopic 180 degrees screen (half sphere). The view will be attached to your head in vr. This is recommended for 180 degrees videos. This is the default value\n");
-	fprintf(stderr, "  --sphere360       View the window as an equirectangular cube map. This is what is mostly used on youtube, where the video is split into top and bottom as a cubemap. The view will be attached to your head in vr\n");
-	fprintf(stderr, "  --flat            View the window as a stereoscopic flat screen. This is recommended for stereoscopic videos and games\n");
-    fprintf(stderr, "  --left-right      This option is used together with --flat, to specify if the left side of the window is meant to be viewed with the left eye and the right side is meant to be viewed by the right eye. This is the default value\n");
-    fprintf(stderr, "  --right-left      This option is used together with --flat, to specify if the left side of the window is meant to be viewed with the right eye and the right side is meant to be viewed by the left eye\n");
-    fprintf(stderr, "  --plane           View the window as a slightly curved screen. This is recommended for non-stereoscopic content\n");
-    fprintf(stderr, "  --stretch         This option is used together with --flat, To specify if the size of both sides of the window should be combined and stretch to that size when viewed in vr. This is the default value\n");
-    fprintf(stderr, "  --no-stretch      This option is used together with --flat, To specify if the size of one side of the window should be the size of the whole window when viewed in vr. This is the option you want if the window looks too wide\n");
-    fprintf(stderr, "  --zoom            Change the distance to the window. This should be a positive value. In flat and plane modes, this is the distance to the window when the window is reset (with W key or controller trigger button). The default value is 0 for all modes except sphere mode, where the default value is 1. This value is unused for sphere360 mode\n");
-    fprintf(stderr, "  --cursor-scale    Change the size of the cursor. This should be a positive value. If set to 0, then the cursor is hidden. The default value is 1 for all modes except sphere mode, where the default value is 0. The cursor is always hidden in sphere360 mode\n");
-    fprintf(stderr, "  --cursor-wrap     If this option is set, then the cursor position in the vr view will wrap around when it reached the center of the window (i.e when it reaches the edge of one side of the stereoscopic view). This option is only valid for stereoscopic view (flat and sphere modes)\n");
-    fprintf(stderr, "  --no-cursor-wrap  If this option is set, then the cursor position in the vr view will match the the real cursor position inside the window\n");
-	fprintf(stderr, "  --follow-focused  If this option is set, then the selected window will be the focused window. vr-video-player will automatically update when the focused window changes. Either this option or window_id should be used\n");
-	fprintf(stderr, "  --free-camera     If this option is set, then the camera wont follow your position. This option is only applicable when not using --sphere or --sphere360\n");
-	fprintf(stderr, "  --reduce-flicker  A hack to reduce flickering in low resolution text when the headset is not moving by moving the window around quickly by a few pixels\n");
-    fprintf(stderr, "  window_id         The X11 window id of the window to view in vr. This option or --follow-focused is required\n");
+    fprintf(stderr, "  --sphere                  View the window as a stereoscopic 180 degrees screen (half sphere). The view will be attached to your head in vr. This is recommended for 180 degrees videos. This is the default value\n");
+	fprintf(stderr, "  --sphere360               View the window as an equirectangular cube map. This is what is mostly used on youtube, where the video is split into top and bottom as a cubemap. The view will be attached to your head in vr\n");
+	fprintf(stderr, "  --flat                    View the window as a stereoscopic flat screen. This is recommended for stereoscopic videos and games\n");
+    fprintf(stderr, "  --left-right              This option is used together with --flat, to specify if the left side of the window is meant to be viewed with the left eye and the right side is meant to be viewed by the right eye. This is the default value\n");
+    fprintf(stderr, "  --right-left              This option is used together with --flat, to specify if the left side of the window is meant to be viewed with the right eye and the right side is meant to be viewed by the left eye\n");
+    fprintf(stderr, "  --plane                   View the window as a slightly curved screen. This is recommended for non-stereoscopic content\n");
+    fprintf(stderr, "  --stretch                 This option is used together with --flat, To specify if the size of both sides of the window should be combined and stretch to that size when viewed in vr. This is the default value\n");
+    fprintf(stderr, "  --no-stretch              This option is used together with --flat, To specify if the size of one side of the window should be the size of the whole window when viewed in vr. This is the option you want if the window looks too wide\n");
+    fprintf(stderr, "  --zoom <zoom>             Change the distance to the window. This should be a positive value. In flat and plane modes, this is the distance to the window when the window is reset (with W key or controller trigger button). The default value is 0 for all modes except sphere mode, where the default value is 1. This value is unused for sphere360 mode\n");
+    fprintf(stderr, "  --cursor-scale <scale>    Change the size of the cursor. This should be a positive value. If set to 0, then the cursor is hidden. The default value is 1 for all modes except sphere mode, where the default value is 0. The cursor is always hidden in sphere360 mode\n");
+    fprintf(stderr, "  --cursor-wrap             If this option is set, then the cursor position in the vr view will wrap around when it reached the center of the window (i.e when it reaches the edge of one side of the stereoscopic view). This option is only valid for stereoscopic view (flat and sphere modes)\n");
+    fprintf(stderr, "  --no-cursor-wrap          If this option is set, then the cursor position in the vr view will match the the real cursor position inside the window\n");
+	fprintf(stderr, "  --reduce-flicker          A hack to reduce flickering in low resolution text when the headset is not moving by moving the window around quickly by a few pixels\n");
+	fprintf(stderr, "  --free-camera             If this option is set, then the camera wont follow your position\n");
+    fprintf(stderr, "  --follow-focused          If this option is set, then the selected window will be the focused window. vr-video-player will automatically update when the focused window changes. Either this option, --video or window_id should be used\n");
+	fprintf(stderr, "  --video <video>           Select the video to play (using mpv). Either this option, --follow-focused or window_id should be used\n");
+    fprintf(stderr, "  window_id                 The X11 window id of the window to view in vr. Either this option, --follow-focused or --video should be used\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "EXAMPLES\n");
     fprintf(stderr, "  vr-video-player 1830423\n");
@@ -409,6 +419,7 @@ static void usage() {
     fprintf(stderr, "  vr-video-player --flat --right-left 1830423\n");
     fprintf(stderr, "  vr-video-player --plane --zoom 2.0 1830423\n");
     fprintf(stderr, "  vr-video-player --flat $(xdotool selectwindow)\n");
+	fprintf(stderr, "  vr-video-player --sphere $HOME/Videos/cool-vr-video.mp4\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Note: All options except window_id are optional\n");
 	exit(1);
@@ -526,10 +537,25 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 			cursor_wrap_set = true;
 		} else if(strcmp(argv[i], "--follow-focused") == 0) {
 			if(src_window_id) {
-				fprintf(stderr, "Error: --follow-focused option can't be used together with the window_id option\n");
+				fprintf(stderr, "Error: window_id option can't be used together with the --follow-focused option\n");
+				exit(1);
+			}
+			if(mpv_file) {
+				fprintf(stderr, "Error: --video option can't be used together with the --follow-focused option\n");
 				exit(1);
 			}
 			follow_focused = true;
+		} else if(strcmp(argv[i], "--video") == 0 && i < argc - 1) {
+			if(src_window_id) {
+				fprintf(stderr, "Error: --follow-focused option can't be used together with the --video option\n");
+				exit(1);
+			}
+			if(follow_focused) {
+				fprintf(stderr, "Error: window_id option can't be used together with the --video option\n");
+				exit(1);
+			}
+			mpv_file = argv[i + 1];
+			++i;
 		} else if(strcmp(argv[i], "--free-camera") == 0) {
 			free_camera = true;
 		} else if(strcmp(argv[i], "--reduce-flicker") == 0) {
@@ -539,7 +565,11 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 			usage();
 		} else {
 			if(follow_focused) {
-				fprintf(stderr, "Error: window_id option can't be used together with the --follow-focused option\n");
+				fprintf(stderr, "Error: --follow-focused option can't be used together with the window_id option\n");
+				exit(1);
+			}
+			if(mpv_file) {
+				fprintf(stderr, "Error: --video option can't be used together with the window_id option\n");
 				exit(1);
 			}
 			if (strncmp(argv[i], "window:", 7) == 0) {
@@ -549,8 +579,8 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 		}
 	}
 
-	if(src_window_id == None && !follow_focused) {
-		fprintf(stderr, "Missing required window_id flag\n");
+	if(src_window_id == None && !follow_focused && !mpv_file) {
+		fprintf(stderr, "Missing required window_id, --follow-focused or --video option\n");
 		usage();
 	}
 
@@ -721,6 +751,9 @@ bool CMainApplication::BInit()
 	if( m_bDebugOpenGL )
 		SDL_GL_SetAttribute( SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG );
 
+	// Needed for mpv
+	SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "no");
+
 	m_pCompanionWindow = SDL_CreateWindow( "vr-video-player", nWindowPosX, nWindowPosY, m_nCompanionWindowWidth, m_nCompanionWindowHeight, unWindowFlags );
 	if (m_pCompanionWindow == NULL)
 	{
@@ -776,6 +809,13 @@ bool CMainApplication::BInit()
 	{
 		printf("%s - Failed to initialize VR Compositor!\n", __FUNCTION__);
 		return false;
+	}
+
+	if(mpv_file) {
+		if(!mpv.create())
+			return false;
+
+		mpv.load_file(mpv_file);
 	}
 
 	//char cwd[4096];
@@ -901,6 +941,9 @@ void CMainApplication::Shutdown()
 	
 	if( m_pContext )
 	{
+		if(mpv_file)
+			mpv.destroy();
+
 		if( m_bDebugOpenGL )
 		{
 			glDebugMessageControl( GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_FALSE );
@@ -930,6 +973,12 @@ void CMainApplication::Shutdown()
 		glDeleteFramebuffers( 1, &rightEyeDesc.m_nRenderFramebufferId );
 		glDeleteTextures( 1, &rightEyeDesc.m_nResolveTextureId );
 		glDeleteFramebuffers( 1, &rightEyeDesc.m_nResolveFramebufferId );
+
+		glDeleteRenderbuffers( 1, &mpvDesc.m_nDepthBufferId );
+		glDeleteTextures( 1, &mpvDesc.m_nRenderTextureId );
+		glDeleteFramebuffers( 1, &mpvDesc.m_nRenderFramebufferId );
+		glDeleteTextures( 1, &mpvDesc.m_nResolveTextureId );
+		glDeleteFramebuffers( 1, &mpvDesc.m_nResolveFramebufferId );
 
 		if( m_unCompanionWindowVAO != 0 )
 		{
@@ -999,6 +1048,10 @@ bool CMainApplication::HandleInput()
 	SDL_Event sdlEvent;
 	bool bRet = false;
     zoom_resize = false;
+	mpv_render_update = false;
+	int64_t video_width = 0;
+	int64_t video_height = 0;
+	bool mpv_quit = false;
 
 	while ( SDL_PollEvent( &sdlEvent ) != 0 )
 	{
@@ -1024,6 +1077,38 @@ bool CMainApplication::HandleInput()
 			{
                 zoom_out();
 			}
+			if(mpv_file && sdlEvent.key.keysym.sym == SDLK_LEFT)
+			{
+				mpv.seek(-5.0); // Seek backwards 5 seconds
+			}
+			if(mpv_file && sdlEvent.key.keysym.sym == SDLK_RIGHT)
+			{
+				mpv.seek(5.0); // Seek forwards 5 seconds
+			}
+			if(mpv_file && sdlEvent.key.keysym.sym == SDLK_SPACE)
+			{
+				mpv.toggle_pause();
+			}
+		}
+
+		bool opdoot = false;
+		if(mpv_file)
+			mpv.on_event(sdlEvent, &opdoot, &video_width, &video_height, &mpv_quit);
+		mpv_render_update |= opdoot;
+
+		if(mpv_quit)
+			bRet = true;
+
+		// TODO: Allow resize config
+		if(video_width > 0 && video_height > 0 && video_width != mpv_video_width && video_height != mpv_video_height && !mpv_video_loaded) {
+			mpv_video_loaded = true;
+			mpv_video_width = video_width;
+			mpv_video_height = video_height;
+			pixmap_texture_width = mpv_video_width;
+			pixmap_texture_height = mpv_video_height;
+			// TODO: Do not create depth buffer and extra framebuffers
+			CreateFrameBuffer(mpv_video_width, mpv_video_height, mpvDesc);
+			SetupScene();
 		}
 	}
 
@@ -1118,6 +1203,10 @@ bool CMainApplication::HandleInput()
 		glBindTexture(GL_TEXTURE_2D, window_texture_get_opengl_texture_id(&window_texture));
 		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &pixmap_texture_width);
 		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &pixmap_texture_height);
+		if(pixmap_texture_width == 0)
+			pixmap_texture_width = 1;
+		if(pixmap_texture_height == 0)
+			pixmap_texture_height = 1;
 		glBindTexture(GL_TEXTURE_2D, 0);
 		SetupScene();
 	} else if(!window_resized && zoom_resize) {
@@ -2084,6 +2173,39 @@ void CMainApplication::RenderStereoTargets()
 	glClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
 	glEnable( GL_MULTISAMPLE );
 
+	// Mpv
+	if(mpv_file && mpv_video_loaded) {
+		glBindFramebuffer( GL_FRAMEBUFFER, mpvDesc.m_nRenderFramebufferId );
+		glViewport(0, 0, mpv_video_width, mpv_video_height);
+		if(mpv_render_update) {
+			mpv_render_update = false;
+			glDisable(GL_DEPTH_TEST);
+
+			glBindVertexArray( m_unCompanionWindowVAO );
+			glUseProgram( m_unCompanionWindowProgramID );
+
+			mpv.draw(mpvDesc.m_nRenderFramebufferId, mpv_video_width, mpv_video_height);
+
+			glBindVertexArray( 0 );
+			glUseProgram( 0 );
+		}
+		glBindFramebuffer( GL_FRAMEBUFFER, 0 );
+		
+		glDisable( GL_MULTISAMPLE );
+
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, mpvDesc.m_nRenderFramebufferId );
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, mpvDesc.m_nResolveFramebufferId );
+		
+		glBlitFramebuffer( 0, 0, mpv_video_width, mpv_video_height, 0, 0, mpv_video_width, mpv_video_height, 
+			GL_COLOR_BUFFER_BIT,
+			GL_LINEAR  );
+
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0 );
+
+		glEnable( GL_MULTISAMPLE );
+	}
+
 	// Left Eye
 	glBindFramebuffer( GL_FRAMEBUFFER, leftEyeDesc.m_nRenderFramebufferId );
  	glViewport(0, 0, m_nRenderWidth, m_nRenderHeight );
@@ -2122,6 +2244,8 @@ void CMainApplication::RenderStereoTargets()
  	glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0 );
 
+	//glEnable( GL_MULTISAMPLE );
+
 	//glBindTexture(GL_TEXTURE_2D, 0);
 }
 
@@ -2131,7 +2255,7 @@ void CMainApplication::RenderStereoTargets()
 //-----------------------------------------------------------------------------
 void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 {
-	if(!src_window_id)
+	if(!src_window_id && !mpv_file)
 		return;
 	
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -2197,10 +2321,11 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 
 	glBindVertexArray( m_unSceneVAO );
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture( GL_TEXTURE_2D, window_texture_get_opengl_texture_id(&window_texture) );
+	glBindTexture(GL_TEXTURE_2D, mpv_file ? mpvDesc.m_nResolveTextureId :  window_texture_get_opengl_texture_id(&window_texture));
 	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, arrow_image_texture_id);
+	glBindTexture(GL_TEXTURE_2D, mpv_file ? 0 : arrow_image_texture_id);
 	glDrawArrays( GL_TRIANGLES, 0, m_uiVertcount );
+
 	glBindVertexArray( 0 );
 
 	glActiveTexture(GL_TEXTURE0);
