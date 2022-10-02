@@ -4,3 +4,4 @@ Optimize mpv rendering option. Causes stuttering for some reason while capturing
 Dynamically load mpv (with dlopen) when using the --video option instead of linking to it at compile time.
 Show mpv gui.
 Allow setting/changing video at runtime.
+Automatically use the right vr option when using mpv by looking at the file name (or file metadata?). There is a standard in filenames to specify the vr format.
