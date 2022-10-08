@@ -427,7 +427,7 @@ static void usage() {
     fprintf(stderr, "  vr-video-player --flat --right-left 1830423\n");
     fprintf(stderr, "  vr-video-player --plane --zoom 2.0 1830423\n");
     fprintf(stderr, "  vr-video-player --flat $(xdotool selectwindow)\n");
-	fprintf(stderr, "  vr-video-player --sphere $HOME/Videos/cool-vr-video.mp4\n");
+	fprintf(stderr, "  vr-video-player --sphere --video $HOME/Videos/cool-vr-video.mp4\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Note: All options except window_id are optional\n");
 	exit(1);

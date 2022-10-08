@@ -5,3 +5,5 @@ Dynamically load mpv (with dlopen) when using the --video option instead of link
 Show mpv gui.
 Allow setting/changing video at runtime.
 Automatically use the right vr option when using mpv by looking at the file name (or file metadata?). There is a standard in filenames to specify the vr format.
+Use libmpv. Make stereo audio follow headset rotation in 180/360 mode (assume facing forward is the default audio mode).
+Fix sphere360... AAAAAA
