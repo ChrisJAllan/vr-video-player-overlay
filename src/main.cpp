@@ -300,6 +300,7 @@ private: // X compositor
 	bool cursor_wrap = true;
 	bool free_camera = false;
 	bool reduce_flicker = false;
+	bool use_system_mpv_config = false;
 	double reduce_flicker_counter = 0.0;
 
 	GLuint arrow_image_texture_id = 0;
@@ -419,6 +420,7 @@ static void usage() {
 	fprintf(stderr, "  --free-camera             If this option is set, then the camera wont follow your position\n");
     fprintf(stderr, "  --follow-focused          If this option is set, then the selected window will be the focused window. vr-video-player will automatically update when the focused window changes. Either this option, --video or window_id should be used\n");
 	fprintf(stderr, "  --video <video>           Select the video to play (using mpv). Either this option, --follow-focused or window_id should be used\n");
+	fprintf(stderr, "  --use-system-mpv-config   Use system (~/.config/mpv/mpv.conf) mpv config. Disabled by default\n");
     fprintf(stderr, "  window_id                 The X11 window id of the window to view in vr. Either this option, --follow-focused or --video should be used\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "EXAMPLES\n");
@@ -565,6 +567,8 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 			}
 			mpv_file = argv[i + 1];
 			++i;
+		} else if(strcmp(argv[i], "--use-system-mpv-config") == 0) {
+			use_system_mpv_config = true;
 		} else if(strcmp(argv[i], "--free-camera") == 0) {
 			free_camera = true;
 		} else if(strcmp(argv[i], "--reduce-flicker") == 0) {
@@ -838,7 +842,7 @@ bool CMainApplication::BInit()
 	if(mpv_file) {
 		mpv_thread = std::thread([&]{
 			set_current_context(m_pMpvContext);
-			if(!mpv.create())
+			if(!mpv.create(use_system_mpv_config))
 				return;
 
 			mpv.load_file(mpv_file);

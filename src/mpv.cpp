@@ -38,7 +38,7 @@ static bool exec_program_daemonized(const char **args) {
 }
 
 static void show_notification(const char *title, const char *msg, const char *urgency) {
-    const char *args[] = { "notify-send", "-t", "10000", "-u", urgency, "--", title, msg, NULL };
+    const char *args[] = { "notify-send", "-a", "vr-video-player", "-t", "10000", "-u", urgency, "--", title, msg, NULL };
     exec_program_daemonized(args);
 }
 
@@ -64,7 +64,7 @@ Mpv::~Mpv() {
     destroy();
 }
 
-bool Mpv::create() {
+bool Mpv::create(bool use_system_mpv_config) {
     if(created)
         return false;
 
@@ -72,6 +72,11 @@ bool Mpv::create() {
     if(!mpv) {
         fprintf(stderr, "Error: mpv_create failed\n");
         return false;
+    }
+
+    if(use_system_mpv_config) {
+        mpv_set_option_string(mpv, "config", "yes");
+        mpv_set_option_string(mpv, "load-scripts", "yes");
     }
 
     if(mpv_initialize(mpv) < 0) {
@@ -195,7 +200,8 @@ void Mpv::on_event(SDL_Event &event, bool *render_update, int64_t *width, int64_
                 mpv_event_end_file *msg = (mpv_event_end_file*)mp_event->data;
                 if(msg->reason == MPV_END_FILE_REASON_ERROR) {
                     show_notification("vr video player mpv video error", mpv_error_string(msg->error), "critical");
-                    exit(6);
+                    if(quit)
+                        *quit = true;
                 }
                 if(msg->reason == MPV_END_FILE_REASON_EOF) {
                     show_notification("vr video player", "the video ended", "low");
