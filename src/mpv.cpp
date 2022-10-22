@@ -159,7 +159,7 @@ bool Mpv::load_file(const char *path) {
     return true;
 }
 
-void Mpv::on_event(SDL_Event &event, bool *render_update, int64_t *width, int64_t *height, bool *quit) {
+void Mpv::on_event(SDL_Event &event, bool *render_update, int64_t *width, int64_t *height, bool *quit, int *error) {
     if(render_update)
         *render_update = false;
 
@@ -171,6 +171,9 @@ void Mpv::on_event(SDL_Event &event, bool *render_update, int64_t *width, int64_
 
     if(quit)
         *quit = false;
+
+    if(error)
+        *error = 0;
 
     if(!created)
         return;
@@ -200,8 +203,10 @@ void Mpv::on_event(SDL_Event &event, bool *render_update, int64_t *width, int64_
                 mpv_event_end_file *msg = (mpv_event_end_file*)mp_event->data;
                 if(msg->reason == MPV_END_FILE_REASON_ERROR) {
                     show_notification("vr video player mpv video error", mpv_error_string(msg->error), "critical");
-                    if(quit)
+                    if(quit) {
                         *quit = true;
+                        *error = -1;
+                    }
                 }
                 if(msg->reason == MPV_END_FILE_REASON_EOF) {
                     show_notification("vr video player", "the video ended", "low");

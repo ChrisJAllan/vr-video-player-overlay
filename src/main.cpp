@@ -34,6 +34,7 @@
 #include <GL/glew.h>
 #include "../include/window_texture.h"
 #include "../include/mpv.hpp"
+#include "../include/config.hpp"
 
 #include <SDL.h>
 #include <SDL_opengl.h>
@@ -69,6 +70,20 @@
 #endif
 
 static bool g_bPrintf = true;
+
+enum class ViewMode {
+	LEFT_RIGHT,
+	RIGHT_LEFT,
+	PLANE,
+	SPHERE360
+};
+
+enum class ProjectionMode {
+	SPHERE,
+	FLAT,
+	CYLINDER, /* aka plane */
+	SPHERE360
+};
 
 //-----------------------------------------------------------------------------
 // Purpose:
@@ -121,10 +136,12 @@ public:
 	// Get focused window or None
 	Window get_focused_window();
 
+	void save_config();
+
+	int exit_code = 0;
+	bool bQuit = false;
 private: 
 	bool m_bDebugOpenGL;
-	bool m_bVerbose;
-	bool m_bPerf;
 	bool m_bVblank;
 	bool m_bGlFinishHack;
 
@@ -146,7 +163,6 @@ private: // OpenGL bookkeeping
 	int m_iValidPoseCount;
 	int m_iValidPoseCount_Last;
 	bool m_bResetRotation;
-	glm::vec2 m_vAnalogValue;
 
 	std::string m_strPoseClasses;                            // what classes we saw poses for this frame
 	char m_rDevClassChar[ vr::k_unMaxTrackedDeviceCount ];   // for each device, a character representing its class
@@ -171,15 +187,10 @@ private: // OpenGL bookkeeping
 	GLuint m_glCompanionWindowIDIndexBuffer;
 	unsigned int m_uiCompanionWindowIndexSize;
 
-	GLuint m_glControllerVertBuffer;
-	GLuint m_unControllerVAO;
-	unsigned int m_uiControllerVertcount;
-
 	glm::mat4 m_mat4HMDPose;
 	glm::mat4 m_mat4eyePosLeft;
 	glm::mat4 m_mat4eyePosRight;
 
-	glm::mat4 m_mat4ProjectionCenter;
 	glm::mat4 m_mat4ProjectionLeft;
 	glm::mat4 m_mat4ProjectionRight;
 
@@ -187,6 +198,8 @@ private: // OpenGL bookkeeping
 	glm::vec3 hmd_pos = glm::vec3(0.0f, 0.0f, 0.0f);
 	glm::quat hmd_rot = glm::quat(0.0f, 0.0f, 0.0f, 1.0f);
 	glm::quat m_reset_rotation = glm::quat(0.0f, 0.0f, 0.0f, 0.0f);
+
+	Config config;
 
 	struct VertexDataScene
 	{
@@ -235,10 +248,6 @@ private: // OpenGL bookkeeping
 	uint32_t m_nRenderHeight;
 
 	vr::VRActionHandle_t m_actionHideCubes = vr::k_ulInvalidActionHandle;
-	vr::VRActionHandle_t m_actionHideThisController = vr::k_ulInvalidActionHandle;
-	vr::VRActionHandle_t m_actionTriggerHaptic = vr::k_ulInvalidActionHandle;
-	vr::VRActionHandle_t m_actionAnalongInput = vr::k_ulInvalidActionHandle;
-
 	vr::VRActionSetHandle_t m_actionsetDemo = vr::k_ulInvalidActionSetHandle;
 
 private: // X compositor
@@ -278,20 +287,6 @@ private: // X compositor
 	GLint pixmap_texture_width = 1;
 	GLint pixmap_texture_height = 1;
 
-	enum class ViewMode {
-		LEFT_RIGHT,
-		RIGHT_LEFT,
-		PLANE,
-		SPHERE360
-	};
-
-	enum class ProjectionMode {
-		SPHERE,
-		FLAT,
-		CYLINDER, /* aka plane */
-		SPHERE360
-	};
-
 	ProjectionMode projection_mode = ProjectionMode::SPHERE;
 	double zoom = 0.0;
 	float cursor_scale = 2.0f;
@@ -312,6 +307,8 @@ private: // X compositor
 	float cursor_scale_uniform[2];
 	double arrow_ratio;
 	bool cursor_image_set = false;
+
+	bool config_exists = false;
 };
 
 
@@ -401,7 +398,7 @@ void dprintf( const char *fmt, ... )
 }
 
 static void usage() {
-	fprintf(stderr, "usage: vr-video-player [--sphere|--sphere360|--flat|--plane] [--left-right|--right-left] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] [--cursor-wrap|--no-cursor-wrap] [--follow-focused] [--video video] <window_id>\n");
+	fprintf(stderr, "usage: vr-video-player [--sphere|--sphere360|--flat|--plane] [--left-right|--right-left] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] [--cursor-wrap|--no-cursor-wrap] [--follow-focused|--video video|<window_id>] [--use-system-mpv-config] [--free-camera] [--reduce-flicker]\n");
     fprintf(stderr, "\n");
 	fprintf(stderr, "OPTIONS\n");
     fprintf(stderr, "  --sphere                  View the window as a stereoscopic 180 degrees screen (half sphere). The view will be attached to your head in vr. This is recommended for 180 degrees videos. This is the default value\n");
@@ -435,6 +432,35 @@ static void usage() {
 	exit(1);
 }
 
+static void get_config_values(const Config &config, ProjectionMode projection_mode, glm::vec3 &pos, glm::quat &rot, float &zoom) {
+	switch(projection_mode) {
+		case ProjectionMode::SPHERE: {
+			pos = config.sphere.position;
+			rot = config.sphere.rotation;
+			zoom = config.sphere.zoom;
+			break;
+		}
+		case ProjectionMode::FLAT: {
+			pos = config.flat.position;
+			rot = config.flat.rotation;
+			zoom = config.flat.zoom;
+			break;
+		}
+		case ProjectionMode::CYLINDER: {
+			pos = config.plane.position;
+			rot = config.plane.rotation;
+			zoom = config.plane.zoom;
+			break;
+		}
+		case ProjectionMode::SPHERE360: {
+			pos = config.sphere360.position;
+			rot = config.sphere360.rotation;
+			zoom = config.sphere360.zoom;
+			break;
+		}
+	}
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
 //-----------------------------------------------------------------------------
@@ -448,12 +474,8 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	, m_unCompanionWindowProgramID( 0 )
 	, m_pHMD( NULL )
 	, m_bDebugOpenGL( false )
-	, m_bVerbose( false )
-	, m_bPerf( false )
 	, m_bVblank( false )
 	, m_bGlFinishHack( false )
-	, m_glControllerVertBuffer( 0 )
-	, m_unControllerVAO( 0 )
 	, m_unSceneVAO( 0 )
 	, m_nSceneMatrixLocation( -1 )
 	, m_nSceneTextureOffsetXLocation( -1 )
@@ -623,6 +645,15 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 #ifdef _DEBUG
 	m_bDebugOpenGL = true;
 #endif
+
+	config = read_config(config_exists);
+	if(!config_exists)
+		return;
+
+	float saved_config = 0.0f;
+	get_config_values(config, projection_mode, hmd_pos, m_reset_rotation, saved_config);
+	if(!zoom_set)
+		zoom = saved_config;
 };
 
 
@@ -748,7 +779,8 @@ bool CMainApplication::BInit()
 	}
 
 	auto standing_pos = m_pHMD->GetSeatedZeroPoseToStandingAbsoluteTrackingPose();
-	hmd_pos += glm::vec3(standing_pos.m[0][3], standing_pos.m[1][3], standing_pos.m[2][3]);
+	if(!config_exists)
+		hmd_pos += glm::vec3(standing_pos.m[0][3], standing_pos.m[1][3], standing_pos.m[2][3]);
 
 	int nWindowPosX = 700;
 	int nWindowPosY = 100;
@@ -895,29 +927,20 @@ bool CMainApplication::BInit()
 		});
 	}
 
-	//char cwd[4096];
-	//getcwd(cwd, sizeof(cwd));
-	//printf("cwd: %s\n", cwd);
-	//dirname(cwd);
 	char action_manifest_path[PATH_MAX];
 	realpath("config/hellovr_actions.json", action_manifest_path);
 	if(access(action_manifest_path, F_OK) == -1) {
 		strcpy(action_manifest_path, "/usr/share/vr-video-player/hellovr_actions.json");
 		if(access(action_manifest_path, F_OK) == -1) {
 			fprintf(stderr, "Unable to find hellovr_action.json!\n");
-			exit(1);
+			return false;
 		}
 	}
 
-	fprintf(stderr, "Using config file: %s\n", action_manifest_path);
+	fprintf(stderr, "Using openvr config file: %s\n", action_manifest_path);
 
 	vr::VRInput()->SetActionManifestPath(action_manifest_path);
-
 	vr::VRInput()->GetActionHandle( "/actions/demo/in/HideCubes", &m_actionHideCubes );
-	vr::VRInput()->GetActionHandle( "/actions/demo/in/HideThisController", &m_actionHideThisController);
-	vr::VRInput()->GetActionHandle( "/actions/demo/in/TriggerHaptic", &m_actionTriggerHaptic );
-	vr::VRInput()->GetActionHandle( "/actions/demo/in/AnalogInput", &m_actionAnalongInput );
-
 	vr::VRInput()->GetActionSetHandle( "/actions/demo", &m_actionsetDemo );
 
 	return true;
@@ -993,8 +1016,6 @@ bool CMainApplication::BInitGL()
 //-----------------------------------------------------------------------------
 bool CMainApplication::BInitCompositor()
 {
-	vr::EVRInitError peError = vr::VRInitError_None;
-
 	if ( !vr::VRCompositor() )
 	{
 		printf( "Compositor initialization failed. See log file for details\n" );
@@ -1067,10 +1088,6 @@ void CMainApplication::Shutdown()
 		if( m_unSceneVAO != 0 )
 		{
 			glDeleteVertexArrays( 1, &m_unSceneVAO );
-		}
-		if( m_unControllerVAO != 0 )
-		{
-			glDeleteVertexArrays( 1, &m_unControllerVAO );
 		}
 	}
 
@@ -1171,8 +1188,12 @@ bool CMainApplication::HandleInput()
 		}
 
 		bool opdoot = false;
-		if(mpv_file)
-			mpv.on_event(sdlEvent, &opdoot, &video_width, &video_height, &mpv_quit);
+		if(mpv_file) {
+			int error = 0;
+			mpv.on_event(sdlEvent, &opdoot, &video_width, &video_height, &mpv_quit, &error);
+			if(mpv_quit && error != 0)
+				exit_code = 2;
+		}
 
 		if(opdoot)
 			set_render_update();
@@ -1180,7 +1201,7 @@ bool CMainApplication::HandleInput()
 		if(mpv_quit)
 			bRet = true;
 
-		// TODO: Allow resize config
+		// TODO: Allow video resize to update texture size
 		if(video_width > 0 && video_height > 0 && video_width != mpv_video_width && video_height != mpv_video_height && !mpv_video_loaded && !mpv_loaded_in_thread) {
 			mpv_video_width = video_width;
 			mpv_video_height = video_height;
@@ -1326,13 +1347,6 @@ bool CMainApplication::HandleInput()
 	if(!free_camera)
 		hmd_pos = current_pos;
 
-	vr::InputAnalogActionData_t analogData;
-	if ( vr::VRInput()->GetAnalogActionData( m_actionAnalongInput, &analogData, sizeof( analogData ), vr::k_ulInvalidInputValueHandle ) == vr::VRInputError_None && analogData.bActive )
-	{
-		m_vAnalogValue[0] = analogData.x;
-		m_vAnalogValue[1] = analogData.y;
-	}
-
 	return bRet;
 }
 
@@ -1341,8 +1355,6 @@ bool CMainApplication::HandleInput()
 //-----------------------------------------------------------------------------
 void CMainApplication::RunMainLoop()
 {
-	bool bQuit = false;
-
 	SDL_StartTextInput();
 
 	SDL_Joystick *controller = SDL_JoystickOpen(0);
@@ -1718,7 +1730,7 @@ bool CMainApplication::SetCursorFromX11CursorImage(XFixesCursorImage *x11_cursor
 		}
 	}
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, arrow_image_width, arrow_image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, cursor_data);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, arrow_image_width, arrow_image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, cursor_data);
 	delete []cursor_data;
 	glGenerateMipmap(GL_TEXTURE_2D);
 
@@ -1755,6 +1767,52 @@ Window CMainApplication::get_focused_window() {
 		return focused_window;
 	}
 	return None;
+}
+
+void CMainApplication::save_config() {
+	if(free_camera) {
+		switch(projection_mode) {
+			case ProjectionMode::SPHERE: {
+				config.sphere.position = hmd_pos;
+				break;
+			}
+			case ProjectionMode::FLAT: {
+				config.flat.position = hmd_pos;
+				break;
+			}
+			case ProjectionMode::CYLINDER: {
+				config.plane.position = hmd_pos;
+				break;
+			}
+			case ProjectionMode::SPHERE360: {
+				config.sphere360.position = hmd_pos;
+				break;
+			}
+		}
+	}
+	switch(projection_mode) {
+		case ProjectionMode::SPHERE: {
+			config.sphere.rotation = m_reset_rotation;
+			config.sphere.zoom = zoom;
+			break;
+		}
+		case ProjectionMode::FLAT: {
+			config.flat.rotation = m_reset_rotation;
+			config.flat.zoom = zoom;
+			break;
+		}
+		case ProjectionMode::CYLINDER: {
+			config.plane.rotation = m_reset_rotation;
+			config.plane.zoom = zoom;
+			break;
+		}
+		case ProjectionMode::SPHERE360: {
+			config.sphere360.rotation = m_reset_rotation;
+			config.sphere360.zoom = zoom;
+			break;
+		}
+	}
+	::save_config(config);
 }
 
 
@@ -2400,36 +2458,7 @@ void CMainApplication::RenderScene( vr::Hmd_Eye nEye )
 	glDrawArrays( GL_TRIANGLES, 0, m_uiVertcount );
 
 	glBindVertexArray( 0 );
-
 	glActiveTexture(GL_TEXTURE0);
-#if 0
-	bool bIsInputAvailable = m_pHMD->IsInputAvailable();
-
-	if( bIsInputAvailable )
-	{
-		// draw the controller axis lines
-		glUseProgram( m_unControllerTransformProgramID );
-		glUniformMatrix4fv( m_nControllerMatrixLocation, 1, GL_FALSE, glm::value_ptr(GetCurrentViewProjectionMatrix( nEye )));
-		glBindVertexArray( m_unControllerVAO );
-		glDrawArrays( GL_LINES, 0, m_uiControllerVertcount );
-		glBindVertexArray( 0 );
-	}
-
-	// ----- Render Model rendering -----
-	glUseProgram( m_unRenderModelProgramID );
-
-	for ( EHand eHand = Left; eHand <= Right; ((int&)eHand)++ )
-	{
-		if ( !m_rHand[eHand].m_bShowController || !m_rHand[eHand].m_pRenderModel )
-			continue;
-
-		const glm::mat4 & matDeviceToTracking = m_rHand[eHand].m_rmat4Pose;
-		glm::mat4 matMVP = GetCurrentViewProjectionMatrix( nEye ) * matDeviceToTracking;
-		glUniformMatrix4fv( m_nRenderModelMatrixLocation, 1, GL_FALSE, glm::value_ptr(matMVP));
-
-		m_rHand[eHand].m_pRenderModel->Draw();
-	}
-#endif
 	glUseProgram( 0 );
 }
 
@@ -2548,7 +2577,7 @@ void CMainApplication::UpdateHMDMatrixPose()
 
 	m_iValidPoseCount = 0;
 	m_strPoseClasses = "";
-	for ( int nDevice = 0; nDevice < vr::k_unMaxTrackedDeviceCount; ++nDevice )
+	for ( int nDevice = 0; nDevice < (int)vr::k_unMaxTrackedDeviceCount; ++nDevice )
 	{
 		if ( m_rTrackedDevicePose[nDevice].bPoseIsValid )
 		{
@@ -2603,7 +2632,13 @@ CMainApplication *pMainApplication;
 void reset_position(int signum)
 {
 	printf("ok\n");
-	pMainApplication->ResetRotation();
+	if(pMainApplication)
+		pMainApplication->ResetRotation();
+}
+
+void quit(int signum) {
+	if(pMainApplication)
+		pMainApplication->bQuit = true;
 }
 
 //-----------------------------------------------------------------------------
@@ -2616,6 +2651,9 @@ int main(int argc, char *argv[])
 	signal(SIGUSR1, reset_position);
 	signal(SIGUSR2, reset_position);
 
+	signal(SIGINT, quit);
+	signal(SIGTERM, quit);
+
 	if (!pMainApplication->BInit())
 	{
 		pMainApplication->Shutdown();
@@ -2623,8 +2661,10 @@ int main(int argc, char *argv[])
 	}
 
 	pMainApplication->RunMainLoop();
-
 	pMainApplication->Shutdown();
 
-	return 0;
+	if(pMainApplication->exit_code == 0)
+		pMainApplication->save_config();
+
+	return pMainApplication->exit_code;
 }
