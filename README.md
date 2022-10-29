@@ -1,17 +1,17 @@
-A virtual reality video player for Linux running X11, based on Valve's openvr `hellovr_opengl` sample code: https://github.com/ValveSoftware/openvr/tree/master/samples
+A virtual reality video player for Linux, based on Valve's openvr `hellovr_opengl` sample code: https://github.com/ValveSoftware/openvr/tree/master/samples
 
 Currently only works with stereo video and equirectangular cube maps (youtube 360 videos) when used for vr videos, but if the vr video player is launched with the `--plane` option then you can view
 the video as a regular video in vr without depth (like a cinema).
 
 ## Note
-Might now work when using a compositor such as picom when using the glx backend.
+Might now work when using a compositor such as picom when using the glx backend (when capturing a window).
 
 # Building
 Run `./build.sh` or if you are running Arch Linux, then you can find it on aur under the name vr-video-player-git (`yay -S vr-video-player-git`).\
 Dependencies needed when building using `build.sh`: `glm, glew, sdl2, openvr, libx11, libxcomposite, libxfixes, libmpv`.
 
 # How to use
-vr-video-player has two options. Either capture a window and view it in vr or a work-in-progress built-in mpv option.
+vr-video-player has two options. Either capture a window and view it in vr (works only on x11) or a work-in-progress built-in mpv option.
 # Using the built-in video player
 To play a video with the built-in mpv player, run vr-video-player like so:
 ```
