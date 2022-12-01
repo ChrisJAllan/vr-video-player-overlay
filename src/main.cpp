@@ -142,6 +142,8 @@ private:
 	bool m_bGlFinishHack;
 
 	vr::IVRSystem *m_pHMD;
+	vr::VROverlayHandle_t overlay;
+	vr::Texture_t mpvTex;
 	vr::TrackedDevicePose_t m_rTrackedDevicePose[ vr::k_unMaxTrackedDeviceCount ];
 	glm::mat4 m_rmat4DevicePose[ vr::k_unMaxTrackedDeviceCount ];
 
@@ -763,7 +765,7 @@ bool CMainApplication::BInit()
 
 	// Loading the SteamVR Runtime
 	vr::EVRInitError eError = vr::VRInitError_None;
-	m_pHMD = vr::VR_Init( &eError, vr::VRApplication_Scene );
+	m_pHMD = vr::VR_Init( &eError, vr::VRApplication_Overlay );
 
 	if ( eError != vr::VRInitError_None )
 	{
@@ -922,6 +924,19 @@ bool CMainApplication::BInit()
 			}
 		});
 	}
+	
+	vr::VROverlay()->CreateOverlay("vr-video-player", "Video Player", &overlay);
+	mpvTex = {(void*)(uintptr_t)mpvDesc.m_nResolveTextureId, vr::TextureType_OpenGL, vr::ColorSpace_Auto };
+	vr::VROverlay()->SetOverlayTexture(overlay, &mpvTex);
+	vr::VROverlay()->SetOverlayFlag(overlay, vr::VROverlayFlags_SideBySide_Parallel, true);
+	vr::VROverlay()->SetOverlayWidthInMeters(overlay, 3);
+	vr::HmdMatrix34_t transform = {
+		1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, -1.0f, 0.0f, 1.0f,
+		0.0f, 0.0f, 1.0f, -2.0f
+	};
+	vr::VROverlay()->SetOverlayTransformAbsolute(overlay, vr::TrackingUniverseStanding, &transform);
+	vr::VROverlay()->ShowOverlay(overlay);
 
 	char action_manifest_path[PATH_MAX];
 	realpath("config/hellovr_actions.json", action_manifest_path);
@@ -1410,14 +1425,21 @@ void CMainApplication::RenderFrame()
 	// for now as fast as possible
 	if ( m_pHMD )
 	{
-		RenderStereoTargets();
-		RenderCompanionWindow();
+		//RenderStereoTargets();
+		//RenderCompanionWindow();
 
-		vr::Texture_t leftEyeTexture = {(void*)(uintptr_t)leftEyeDesc.m_nResolveTextureId, vr::TextureType_OpenGL, vr::ColorSpace_Gamma };
-		vr::VRCompositor()->Submit(vr::Eye_Left, &leftEyeTexture );
-		vr::Texture_t rightEyeTexture = {(void*)(uintptr_t)rightEyeDesc.m_nResolveTextureId, vr::TextureType_OpenGL, vr::ColorSpace_Gamma };
-		vr::VRCompositor()->Submit(vr::Eye_Right, &rightEyeTexture );
+		//vr::Texture_t leftEyeTexture = {(void*)(uintptr_t)leftEyeDesc.m_nResolveTextureId, vr::TextureType_OpenGL, vr::ColorSpace_Gamma };
+		//vr::VRCompositor()->Submit(vr::Eye_Left, &leftEyeTexture );
+		//vr::Texture_t rightEyeTexture = {(void*)(uintptr_t)rightEyeDesc.m_nResolveTextureId, vr::TextureType_OpenGL, vr::ColorSpace_Gamma };
+		//vr::VRCompositor()->Submit(vr::Eye_Right, &rightEyeTexture );
 	}
+	
+	mpvTex = {
+		(void*)(uintptr_t)(mpv_file ? mpvDesc.m_nResolveTextureId : window_texture_get_opengl_texture_id(&window_texture)),
+		vr::TextureType_OpenGL,
+		vr::ColorSpace_Auto
+	};
+	vr::VROverlay()->SetOverlayTexture(overlay, &mpvTex);
 
 	if ( m_bVblank && m_bGlFinishHack )
 	{
@@ -1430,7 +1452,7 @@ void CMainApplication::RenderFrame()
 
 	// SwapWindow
 	{
-		SDL_GL_SwapWindow( m_pCompanionWindow );
+		//SDL_GL_SwapWindow( m_pCompanionWindow );
 	}
 
 	// Clear
@@ -2296,7 +2318,7 @@ void CMainApplication::SetupCompanionWindow()
 	vVerts.push_back( VertexDataWindow( glm::vec2(1, 1), glm::vec2(1, 0)) );
 
 	GLushort vIndices[] = { 0, 1, 3,   0, 3, 2,   4, 5, 7,   4, 7, 6 };
-	m_uiCompanionWindowIndexSize = _countof(vIndices);
+	m_uiCompanionWindowIndexSize = 12;
 
 	glGenVertexArrays( 1, &m_unCompanionWindowVAO );
 	glBindVertexArray( m_unCompanionWindowVAO );

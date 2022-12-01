@@ -107,6 +107,7 @@ bool Mpv::create(bool use_system_mpv_config) {
     mpv_set_option_string(mpv, "hwdec", "auto");
     mpv_set_option_string(mpv, "profile", "gpu-hq");
     mpv_set_option_string(mpv, "gpu-api", "opengl");
+    mpv_set_option_string(mpv, "audio-channels", "stereo");
 
     if(mpv_render_context_create(&mpv_gl, mpv, params) < 0) {
         fprintf(stderr, "Error: mpv_render_context_create failed\n");
