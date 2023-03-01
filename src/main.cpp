@@ -286,7 +286,7 @@ private: // X compositor
 	GLint pixmap_texture_height = 1;
 
 	ProjectionMode projection_mode = ProjectionMode::SPHERE;
-	double zoom = 0.0;
+	float zoom = 0.0f;
 	float cursor_scale = 2.0f;
 	ViewMode view_mode = ViewMode::LEFT_RIGHT;
 	bool stretch = true;
@@ -399,20 +399,13 @@ static void usage() {
 	fprintf(stderr, "usage: vr-video-player [--sphere|--sphere360|--flat|--plane] [--left-right|--right-left] [--stretch|--no-stretch] [--zoom zoom-level] [--cursor-scale scale] [--cursor-wrap|--no-cursor-wrap] [--follow-focused|--video video|<window_id>] [--use-system-mpv-config] [--free-camera] [--reduce-flicker]\n");
     fprintf(stderr, "\n");
 	fprintf(stderr, "OPTIONS\n");
-    fprintf(stderr, "  --sphere                  View the window as a stereoscopic 180 degrees screen (half sphere). The view will be attached to your head in vr. This is recommended for 180 degrees videos. This is the default value\n");
-	fprintf(stderr, "  --sphere360               View the window as an equirectangular cube map. This is what is mostly used on youtube, where the video is split into top and bottom as a cubemap. The view will be attached to your head in vr\n");
-	fprintf(stderr, "  --flat                    View the window as a stereoscopic flat screen. This is recommended for stereoscopic videos and games\n");
-    fprintf(stderr, "  --left-right              This option is used together with --flat, to specify if the left side of the window is meant to be viewed with the left eye and the right side is meant to be viewed by the right eye. This is the default value\n");
-    fprintf(stderr, "  --right-left              This option is used together with --flat, to specify if the left side of the window is meant to be viewed with the right eye and the right side is meant to be viewed by the left eye\n");
-    fprintf(stderr, "  --plane                   View the window as a slightly curved screen. This is recommended for non-stereoscopic content\n");
-    fprintf(stderr, "  --stretch                 This option is used together with --flat, To specify if the size of both sides of the window should be combined and stretch to that size when viewed in vr. This is the default value\n");
-    fprintf(stderr, "  --no-stretch              This option is used together with --flat, To specify if the size of one side of the window should be the size of the whole window when viewed in vr. This is the option you want if the window looks too wide\n");
+	fprintf(stderr, "  --flat                    View the window as a flat screen. This is for 2d videos and games\n");
     fprintf(stderr, "  --zoom <zoom>             Change the distance to the window. This should be a positive value. In flat and plane modes, this is the distance to the window when the window is reset (with W key or controller trigger button). The default value is 0 for all modes except sphere mode, where the default value is 1. This value is unused for sphere360 mode\n");
     fprintf(stderr, "  --cursor-scale <scale>    Change the size of the cursor. This should be a positive value. If set to 0, then the cursor is hidden. The default value is 1 for all modes except sphere mode, where the default value is 0. The cursor is always hidden in sphere360 mode\n");
     fprintf(stderr, "  --cursor-wrap             If this option is set, then the cursor position in the vr view will wrap around when it reached the center of the window (i.e when it reaches the edge of one side of the stereoscopic view). This option is only valid for stereoscopic view (flat and sphere modes)\n");
     fprintf(stderr, "  --no-cursor-wrap          If this option is set, then the cursor position in the vr view will match the the real cursor position inside the window\n");
-	fprintf(stderr, "  --reduce-flicker          A hack to reduce flickering in low resolution text when the headset is not moving by moving the window around quickly by a few pixels\n");
-	fprintf(stderr, "  --free-camera             If this option is set, then the camera wont follow your position\n");
+	//fprintf(stderr, "  --reduce-flicker          A hack to reduce flickering in low resolution text when the headset is not moving by moving the window around quickly by a few pixels\n");
+	//fprintf(stderr, "  --free-camera             If this option is set, then the camera wont follow your position\n");
     fprintf(stderr, "  --follow-focused          If this option is set, then the selected window will be the focused window. vr-video-player will automatically update when the focused window changes. Either this option, --video or window_id should be used\n");
 	fprintf(stderr, "  --video <video>           Select the video to play (using mpv). Either this option, --follow-focused or window_id should be used\n");
 	fprintf(stderr, "  --use-system-mpv-config   Use system (~/.config/mpv/mpv.conf) mpv config. Disabled by default\n");
@@ -618,7 +611,7 @@ CMainApplication::CMainApplication( int argc, char *argv[] )
 	}
 
 	if(!zoom_set && projection_mode != ProjectionMode::SPHERE) {
-		zoom = 1.0;
+		zoom = 1.0f;
 	}
 
 	if(cursor_scale < 0.001f || (!cursor_scale_set && projection_mode == ProjectionMode::SPHERE)) {
@@ -928,7 +921,9 @@ bool CMainApplication::BInit()
 	vr::VROverlay()->CreateOverlay("vr-video-player", "Video Player", &overlay);
 	mpvTex = {(void*)(uintptr_t)mpvDesc.m_nResolveTextureId, vr::TextureType_OpenGL, vr::ColorSpace_Auto };
 	vr::VROverlay()->SetOverlayTexture(overlay, &mpvTex);
-	vr::VROverlay()->SetOverlayFlag(overlay, vr::VROverlayFlags_SideBySide_Parallel, true);
+	if (projection_mode != ProjectionMode::FLAT) {
+		vr::VROverlay()->SetOverlayFlag(overlay, vr::VROverlayFlags_SideBySide_Parallel, true);
+	}
 	vr::VROverlay()->SetOverlayWidthInMeters(overlay, 3);
 	vr::HmdMatrix34_t transform = {
 		1.0f, 0.0f, 0.0f, 0.0f,
