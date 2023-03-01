@@ -1,7 +1,12 @@
 A virtual reality video player for Linux, based on Valve's openvr `hellovr_opengl` sample code: https://github.com/ValveSoftware/openvr/tree/master/samples
 
-Currently only works with stereo video and equirectangular cube maps (youtube 360 videos) when used for vr videos, but if the vr video player is launched with the `--plane` option then you can view
-the video as a regular video in vr without depth (like a cinema).
+## Overlay Fork
+
+Displays as an overlay on top of other VR applications. Defaults to stereoscopic mode unless --flat is given.
+
+**Known Issues:**
+* No controls
+* No output to the preview window
 
 ## Note
 Might now work when using a compositor such as picom when using the glx backend (when capturing a window).
